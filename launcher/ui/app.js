@@ -298,7 +298,7 @@ const MOCK = (() => {
   const P = { state: { version: "1.0.0-beta1", setup_done: !location.hash.includes("setup"), server: { name: "DESKTOP-NICO", address: "127.0.0.1", port: 27015 },
     lang: location.hash.includes("setup") ? "" : (location.hash.includes("de") ? "de" : "en"), auto_nav: true, unlock_all: true, intro_seen: !location.hash.includes("intro"), server_name: "DESKTOP-NICO", srv_online: !location.hash.includes("off"), srv_checked: true, srv_ping: 12, mac: "00:09:BF:4A:91:2C", melon: true, playing: false, hosting: location.hash.includes("host"), pad: true } };
   const keys = ["A", "B", "X", "Y", "L", "R", "Start", "Select", "Up", "Down", "Left", "Right"];
-  const kb = { A: 88, B: 90, X: 83, Y: 65, L: 81, R: 87, Start: 0x01000004, Select: 0x01000003, Up: 0x01000013, Down: 0x01000015, Left: 0x01000012, Right: 0x01000014, HK_FullscreenToggle: 0x0100003A, HK_SwapScreens: 0x01000001, HK_FastForward: -1 };
+  const kb = { A: 88, B: 90, X: 83, Y: 65, L: 81, R: 87, Start: 0x01000004, Select: 0x01000003, Up: 0x01000013, Down: 0x01000015, Left: 0x01000012, Right: 0x01000014, HK_FullscreenToggle: 0x0100003A, HK_SwapScreens: 0x01000001 };
   const hist = [["2026-11-20 18:42", 1, "Radiator Springs", [["Max", 2], ["Lea", 3], ["Tom", 4]]], ["2026-11-20 18:37", 3, "Wüstenrallye", [["Max", 1], ["Lea", 2], ["Tom", 4]]],
     ["2026-11-20 18:31", 2, "Hafenrunde", [["Max", 1], ["Lea", 3]]], ["2026-11-20 18:25", 1, "Canyon-Sprint", [["Max", 3], ["Lea", 2]]]]
     .map(([t, pl, tr, ps]) => ({ time: t, place: pl, track: tr, players: ps.map(([n, p]) => ({ name: n, place: p })) }));
@@ -309,9 +309,9 @@ const MOCK = (() => {
       { name: "Max-PC", ip: "100.92.38.1", local: false, device: "max-pc", ping_ms: 24, mod: "R10", port: 27015, rooms: [] }] }),
     select_server: async () => ({ ok: true }), host: async () => ({ ok: true, tailscale_ip: "100.110.179.120" }), stop_host: async () => ({ ok: true }),
     play: async () => ({ ok: true }),
-    get_bindings: async () => ({ keyboard: kb, joystick: Object.fromEntries([...keys, "HK_FullscreenToggle", "HK_SwapScreens", "HK_FastForward"].map((k, i) => [k, i < 6 ? i : -1])),
-      joy_labels: Object.fromEntries([...keys, "HK_FullscreenToggle", "HK_SwapScreens", "HK_FastForward"].map((k, i) => [k, i < 6 ? "Taste " + i : "—"])),
-      joystick_id: 0, keys, hotkeys: ["HK_FullscreenToggle", "HK_SwapScreens", "HK_FastForward"],
+    get_bindings: async () => ({ keyboard: kb, joystick: Object.fromEntries([...keys, "HK_FullscreenToggle", "HK_SwapScreens"].map((k, i) => [k, i < 6 ? i : -1])),
+      joy_labels: Object.fromEntries([...keys, "HK_FullscreenToggle", "HK_SwapScreens"].map((k, i) => [k, i < 6 ? "Taste " + i : "—"])),
+      joystick_id: 0, keys, hotkeys: ["HK_FullscreenToggle", "HK_SwapScreens"],
       pads: [{ id: 0, name: "Xbox Wireless Controller" }] }),
     set_key: async () => true, set_joy: async (k, v) => v < 0 ? "—" : "Taste " + v, set_joystick_id: async () => true, capture_pad: async () => ({ value: 3, label: "Taste 3", pad: 0 }),
     reset_keys: async () => MOCK.get_bindings(), get_display: async () => ({ layout: 0, sizing: 0, swap: false, integer: false, filter: true, renderer: 1, scale: 3, fullscreen: false }),

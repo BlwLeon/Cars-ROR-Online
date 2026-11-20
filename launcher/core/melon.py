@@ -63,8 +63,8 @@ def parse_toml(text):
 
 # DS-Tasten in der Reihenfolge, wie sie im Launcher angezeigt werden
 DS_KEYS = ["A", "B", "X", "Y", "L", "R", "Start", "Select", "Up", "Down", "Left", "Right"]
-HOTKEYS = {"HK_FullscreenToggle": "Vollbild", "HK_SwapScreens": "Bildschirme tauschen",
-           "HK_FastForward": "Vorspulen (halten)"}
+HOTKEYS = {"HK_FullscreenToggle": "Vollbild", "HK_SwapScreens": "Bildschirme tauschen"}
+# Vorspulen bewusst nicht im Launcher: doppelte Spielgeschwindigkeit bringt die Online-Synchronisation durcheinander
 
 # Standardbelegung (Qt-Tastencodes): Pfeile, X/Y/A/S wie melonDS, Q/W = L/R
 QT = {"Left": 0x01000012, "Up": 0x01000013, "Right": 0x01000014, "Down": 0x01000015,
@@ -72,7 +72,7 @@ QT = {"Left": 0x01000012, "Up": 0x01000013, "Right": 0x01000014, "Down": 0x01000
 DEFAULT_KEYS = {"A": ord("X"), "B": ord("Z"), "X": ord("S"), "Y": ord("A"), "L": ord("Q"), "R": ord("W"),
                 "Start": QT["Return"], "Select": QT["Backspace"], "Up": QT["Up"], "Down": QT["Down"],
                 "Left": QT["Left"], "Right": QT["Right"], "HK_FullscreenToggle": QT["F11"],
-                "HK_SwapScreens": QT["Tab"], "HK_FastForward": -1}
+                "HK_SwapScreens": QT["Tab"]}
 
 
 def load():
