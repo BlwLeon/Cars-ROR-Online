@@ -1,7 +1,9 @@
 ﻿# Baut das fertige Windows-Paket: release\RORM-Online\ (+ Zip)
 #   RORM Online.exe (Launcher), server\RORM-Server.exe, melonDS\, mod\net.elf, LICENSE, Lies-mich
 # Voraussetzung: Python 3.11+ und Internet (Pakete + melonDS-Download)
-param([string]$Version = "1.0.0-beta1")
+param([string]$Version = "1.0.0-beta1", [switch]$OwnBootloader)
+# -OwnBootloader: PyInstaller-Starter selbst aus dem Quellcode kompilieren (braucht einen C-Compiler, z. B. Visual Studio
+# Build Tools). Der vorgefertigte Starter steckt auch in Schadsoftware und wird deshalb oft von Virenscannern gemeldet.
 $ErrorActionPreference = "Stop"
 $here = $PSScriptRoot; $repo = Split-Path $here -Parent
 Set-Location $here
@@ -12,7 +14,15 @@ Run $py @("-c", "import sys; sys.exit(0 if sys.version_info >= (3, 11) else 1)")
 if (-not (Test-Path ".venv")) { Run $py @("-m", "venv", ".venv") }
 $vpy = Join-Path $here ".venv\Scripts\python.exe"
 Run $vpy @("-m", "pip", "install", "--upgrade", "pip", "-q")
-Run $vpy @("-m", "pip", "install", "-q", "pywebview", "pyinstaller", "pysdl2", "pysdl2-dll")
+Run $vpy @("-m", "pip", "install", "-q", "pywebview", "pysdl2", "pysdl2-dll")
+if ($OwnBootloader) {
+    Write-Host "PyInstaller mit eigenem Starter (Bootloader) aus dem Quellcode ..."
+    $env:PYINSTALLER_COMPILE_BOOTLOADER = "1"
+    Run $vpy @("-m", "pip", "install", "--force-reinstall", "--no-binary", "pyinstaller", "--no-cache-dir", "pyinstaller")
+    Remove-Item Env:PYINSTALLER_COMPILE_BOOTLOADER
+} else {
+    Run $vpy @("-m", "pip", "install", "-q", "pyinstaller")
+}
 
 # Launcher (Ordner-Build: weniger Fehlalarme von Virenscannern als eine Einzeldatei)
 Run $vpy @("-m", "PyInstaller", "--noconfirm", "--clean", "--windowed", "--name", "RORM Online",

@@ -35,7 +35,7 @@ jobs:
         shell: pwsh
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: ./launcher/build.ps1 -Version "1.0.0-beta1+${{ github.run_number }}"
+        run: ./launcher/build.ps1 -OwnBootloader -Version "1.0.0-beta1+${{ github.run_number }}"
       - name: SHA-256 der Dateien
         shell: pwsh
         run: Get-ChildItem -Recurse launcher/release/RORM-Online -Include *.exe,*.elf | Get-FileHash -Algorithm SHA256 | Format-Table -AutoSize Hash, Path
