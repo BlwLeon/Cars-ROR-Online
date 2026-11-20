@@ -67,7 +67,9 @@ startet das Spiel mit einem Klick.
 
 ## Installation
 
-1. Den aktuellen Build herunterladen und irgendwo entpacken (z. B. `Dokumente\RORM-Online`).
+1. **`RORM-Online-…-windows.zip`** aus dem [neuesten Release](https://github.com/BlwLeon/Cars-ROR-Online/releases/latest)
+   herunterladen ([alle Releases](https://github.com/BlwLeon/Cars-ROR-Online/releases)) und irgendwo entpacken
+   (z. B. `Dokumente\RORM-Online`).
 2. **`RORM Online.exe`** starten.
    * Windows zeigt eventuell *„Der Computer wurde durch Windows geschützt“*, weil das Programm neu und noch nicht
      signiert ist. *Weitere Informationen → Trotzdem ausführen* klicken. Das Programm ist Open Source und wird

@@ -64,7 +64,9 @@ starts the game with one click.
 
 ## Installation
 
-1. Download the latest build and unzip it anywhere (e.g. `Documents\RORM-Online`).
+1. Download **`RORM-Online-…-windows.zip`** from the [latest release](https://github.com/BlwLeon/Cars-ROR-Online/releases/latest)
+   ([all releases](https://github.com/BlwLeon/Cars-ROR-Online/releases)) and unzip it anywhere
+   (e.g. `Documents\RORM-Online`).
 2. Start **`RORM Online.exe`**.
    * Windows may show *"Windows protected your PC"* because the program is new and not code-signed yet.
      Click *More info → Run anyway*. The program is open source and built automatically from this repository.
