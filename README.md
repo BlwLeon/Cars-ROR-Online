@@ -70,7 +70,9 @@ starts the game with one click.
      Click *More info → Run anyway*. The program is open source and built automatically from this repository.
 3. Choose your language, then **select your own game file** (`.nds`).
    The launcher checks it and creates an online copy in its `user` folder. Your original file is not modified.
-4. Optional: set your online driver name (*Profile*) and your controls (*Settings*).
+4. A short **Getting started** window walks you through the rest: choose your online name (*Profile*), set up
+   your controls (*Settings*), connect with your friends (*Server*) and race (*Play*). You can open it again any
+   time via *Getting started* at the bottom left.
 
 ## Playing
 

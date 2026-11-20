@@ -29,6 +29,7 @@
     <div class="side-foot">
       <div class="pill"><span class="dot" id="srvDot"></span><div><span data-i="side_server"></span> · <span id="srvState"></span><b id="srvName">–</b></div></div>
       <div class="pill" id="hostPill" style="display:none"><span class="dot ok"></span><div><span data-i="side_hosting"></span><b id="hostName">–</b></div></div>
+      <button class="linkbtn" id="btnIntro" data-i="intro_open"></button>
       <div class="ver" id="ver"></div>
     </div>
   </aside>
@@ -214,6 +215,21 @@
       </div>
     </div>
     <p class="muted small" style="margin-top:22px;opacity:.7" data-i="setup_disclaimer"></p>
+  </div>
+</div>
+<!-- ================= Erste Schritte ================= -->
+<div class="overlay modal" id="intro">
+  <div class="card introcard">
+    <div class="row" style="gap:14px;margin-bottom:6px"><img src="logo.svg" style="width:46px"><div>
+      <h1 style="font-size:24px;margin:0" data-i="intro_title"></h1>
+      <div class="muted small" data-i="intro_sub"></div></div></div>
+    <ol class="intro">
+      <li><div><b data-i="intro1_t"></b><span data-i="intro1"></span></div><button class="btn ghost" data-go="profile" data-i="intro_go"></button></li>
+      <li><div><b data-i="intro2_t"></b><span data-i="intro2"></span></div><button class="btn ghost" data-go="settings" data-i="intro_go"></button></li>
+      <li><div><b data-i="intro3_t"></b><span data-ih="intro3"></span></div><button class="btn ghost" data-go="server" data-i="intro_go"></button></li>
+      <li><div><b data-i="intro4_t"></b><span data-i="intro4"></span></div><button class="btn ghost" data-go="play" data-i="intro_go"></button></li>
+    </ol>
+    <div class="row" style="justify-content:flex-end"><button class="btn primary" id="btnIntroOk" data-i="intro_ok"></button></div>
   </div>
 </div>
 <div class="toast" id="toast"></div>

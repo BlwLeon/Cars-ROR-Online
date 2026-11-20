@@ -74,7 +74,9 @@ startet das Spiel mit einem Klick.
      automatisch aus diesem Repository gebaut.
 3. Sprache wählen, dann **deine eigene Spieldatei** (`.nds`) auswählen. Der Launcher prüft sie und erstellt eine
    Online-Kopie in seinem Ordner `user`. Deine Original-Datei wird nicht verändert.
-4. Optional: Online-Fahrernamen (*Profil*) und Steuerung (*Einstellungen*) festlegen.
+4. Ein kurzes **Erste Schritte**-Fenster führt durch den Rest: Online-Namen wählen (*Profil*), Steuerung
+   einrichten (*Einstellungen*), mit Freunden verbinden (*Server*) und losfahren (*Spielen*). Es lässt sich
+   jederzeit über *Erste Schritte* unten links wieder öffnen.
 
 ## Spielen
 

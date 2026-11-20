@@ -61,12 +61,17 @@ class Api:
         if crash is not None:
             with open(os.path.join(paths.USER_DIR, "launcher_log.txt"), "a", encoding="utf-8") as f:
                 f.write(time.strftime("[%Y-%m-%d %H:%M:%S] ") + f"melonDS beendet mit Code {crash & 0xFFFFFFFF:#x}\n")
-        return {"version": VERSION, "lang": s["lang"], "auto_nav": s.get("auto_nav", True), "unlock_all": s.get("unlock_all", True), "setup_done": s["setup_done"] and rom.is_ready(),
+        return {"version": VERSION, "lang": s["lang"], "auto_nav": s.get("auto_nav", True), "unlock_all": s.get("unlock_all", True), "intro_seen": s.get("intro_seen", False), "setup_done": s["setup_done"] and rom.is_ready(),
                 "server": s["server"], "server_name": s["server_name"] or os.environ.get("COMPUTERNAME", "Mein Server"),
                 "mac": s["mac"], "melon": os.path.exists(paths.MELON_EXE), "playing": melon.running(),
                 "hosting": servers.host_running(), "pad": pad.available(), "pad_error": pad.ERROR, "crash": crash,
                 "srv_online": self.srv_info is not None, "srv_checked": self.srv_checked > 0,
                 "srv_players": (self.srv_info or {}).get("players"), "srv_ping": (self.srv_info or {}).get("ping_ms")}
+
+    def set_intro_seen(self):
+        self.s["intro_seen"] = True
+        settings.save(self.s)
+        return True
 
     def set_unlock_all(self, on):
         self.s["unlock_all"] = bool(on)

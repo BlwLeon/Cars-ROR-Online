@@ -12,7 +12,8 @@ DEFAULTS = {
     "lang": "",
     "elf_hash": "",                  # Stand des Patches, mit dem die ROM erstellt wurde
     "auto_nav": True,
-    "unlock_all": True,              # eigenes Online-Profil mit allem freigeschaltet benutzen                # im Spiel automatisch zu Host/Beitreten springen                      # "" = beim ersten Start fragen
+    "unlock_all": True,
+    "intro_seen": False,             # "Erste Schritte" wurde schon gezeigt              # eigenes Online-Profil mit allem freigeschaltet benutzen                # im Spiel automatisch zu Host/Beitreten springen                      # "" = beim ersten Start fragen
 }
 
 

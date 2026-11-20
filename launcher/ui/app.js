@@ -28,6 +28,7 @@ async function refresh() {
   $("#aboutVer").textContent = t("version") + " " + ST.version;
   if (ST.lang && ST.lang !== LANG) applyLang(ST.lang);
   $("#setup").classList.toggle("on", !ST.setup_done || !ST.lang);
+  if (ST.setup_done && ST.lang && !ST.intro_seen && !introShown) showIntro();
   $("#setupLang").style.display = ST.lang ? "none" : "";
   $("#setupRom").style.display = ST.lang ? "" : "none";
   const s = ST.server;
@@ -47,6 +48,14 @@ async function refresh() {
   $("#unlockAll").checked = ST.unlock_all;
   if (ST.crash != null) toast(t("play_crash", { c: ST.crash >>> 0 }), true);
 }
+
+// ---------------- Erste Schritte ----------------
+let introShown = false;
+function showIntro() { introShown = true; $("#intro").classList.add("on"); }
+async function closeIntro() { $("#intro").classList.remove("on"); await api.set_intro_seen(); ST.intro_seen = true; }
+$("#btnIntro").onclick = showIntro;
+$("#btnIntroOk").onclick = closeIntro;
+$$("#intro [data-go]").forEach(b => b.onclick = async () => { await closeIntro(); $(`.nav button[data-p="${b.dataset.go}"]`).click(); });
 
 // ---------------- Ersteinrichtung ----------------
 $("#btnPickRom").onclick = async () => {
@@ -287,7 +296,7 @@ else window.addEventListener("pywebviewready", bootOnce);
 // Vorschau im Browser (ohne Python): Beispieldaten
 const MOCK = (() => {
   const P = { state: { version: "1.0.0-beta1", setup_done: !location.hash.includes("setup"), server: { name: "DESKTOP-NICO", address: "127.0.0.1", port: 27015 },
-    lang: location.hash.includes("setup") ? "" : (location.hash.includes("de") ? "de" : "en"), auto_nav: true, unlock_all: true, server_name: "DESKTOP-NICO", srv_online: !location.hash.includes("off"), srv_checked: true, srv_ping: 12, mac: "00:09:BF:4A:91:2C", melon: true, playing: false, hosting: location.hash.includes("host"), pad: true } };
+    lang: location.hash.includes("setup") ? "" : (location.hash.includes("de") ? "de" : "en"), auto_nav: true, unlock_all: true, intro_seen: !location.hash.includes("intro"), server_name: "DESKTOP-NICO", srv_online: !location.hash.includes("off"), srv_checked: true, srv_ping: 12, mac: "00:09:BF:4A:91:2C", melon: true, playing: false, hosting: location.hash.includes("host"), pad: true } };
   const keys = ["A", "B", "X", "Y", "L", "R", "Start", "Select", "Up", "Down", "Left", "Right"];
   const kb = { A: 88, B: 90, X: 83, Y: 65, L: 81, R: 87, Start: 0x01000004, Select: 0x01000003, Up: 0x01000013, Down: 0x01000015, Left: 0x01000012, Right: 0x01000014, HK_FullscreenToggle: 0x0100003A, HK_SwapScreens: 0x01000001, HK_FastForward: -1 };
   const hist = [["2026-11-20 18:42", 1, "Radiator Springs", [["Max", 2], ["Lea", 3], ["Tom", 4]]], ["2026-11-20 18:37", 3, "Wüstenrallye", [["Max", 1], ["Lea", 2], ["Tom", 4]]],
@@ -309,7 +318,7 @@ const MOCK = (() => {
     set_display: async () => true,
     profile: async () => ({ driver: "Nico", profiles: [{ slot: 0, name: "gwt", used: true }, { slot: 2, name: "Nico", used: true, online: true }], mac: "00:09:BF:4A:91:2C", name_max: 9, history: hist,
       summary: { races: 4, wins: 2, podium: 4, rivals: [{ name: "Max", races: 4, ahead: 2 }, { name: "Lea", races: 4, ahead: 3 }, { name: "Tom", races: 2, ahead: 2 }] } }),
-    set_name: async () => ({ ok: true }), set_driver_name: async () => ({ ok: true }), open_folder: async () => true, set_lang: async l => (P.state.lang = l, l), set_auto_nav: async v => v, set_unlock_all: async v => v,
+    set_name: async () => ({ ok: true }), set_driver_name: async () => ({ ok: true }), open_folder: async () => true, set_lang: async l => (P.state.lang = l, l), set_auto_nav: async v => v, set_unlock_all: async v => v, set_intro_seen: async () => true,
   };
 })();
 if (location.hash.includes("mock")) setTimeout(bootOnce, 50);   // Vorschau im Browser: index.html#mock
