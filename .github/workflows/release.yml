@@ -1,0 +1,45 @@
+name: Release
+
+# Ein Release entsteht, wenn ein Versions-Tag (z. B. v1.0.0-beta1) hochgeladen wird.
+# Gebaut wird wie im Build-Workflow; die Zip wird an das GitHub-Release angehängt.
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Paket bauen
+        shell: pwsh
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $ver = "${{ github.ref_name }}".TrimStart("v")
+          ./launcher/build.ps1 -OwnBootloader -Version $ver
+      - name: Prüfsummen
+        shell: pwsh
+        run: |
+          $zip = Get-ChildItem launcher/release/*.zip | Select-Object -First 1
+          $h = (Get-FileHash $zip -Algorithm SHA256).Hash
+          "$h  $($zip.Name)" | Set-Content launcher/release/SHA256SUMS.txt
+          Get-Content launcher/release/SHA256SUMS.txt
+      - name: GitHub-Release anlegen
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $tag = "${{ github.ref_name }}"
+          $notes = "docs/release-notes/$tag.md"
+          if (-not (Test-Path $notes)) { $notes = $null }
+          $pre = @(); if ($tag -match "beta|alpha|rc") { $pre = @("--prerelease") }
+          $files = @((Get-ChildItem launcher/release/*.zip).FullName, "launcher/release/SHA256SUMS.txt")
+          if ($notes) { gh release create $tag @files --title "Race-O-Rama Online $tag" --notes-file $notes @pre }
+          else { gh release create $tag @files --title "Race-O-Rama Online $tag" --generate-notes @pre }
