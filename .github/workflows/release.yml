@@ -56,7 +56,8 @@ jobs:
           $tag = "${{ steps.ver.outputs.tag }}"
           $notes = "docs/release-notes/$tag.md"
           if (-not (Test-Path $notes)) { $notes = $null }
-          $pre = @(); if ($tag -match "beta|alpha|rc") { $pre = @("--prerelease") }
+          # Bewusst kein --prerelease: Pre-releases zeigt GitHub nicht in der Seitenleiste "Releases" an.
+          $pre = @("--latest")
           $files = @((Get-ChildItem launcher/release/*.zip).FullName, "launcher/release/SHA256SUMS.txt")
           $common = @("--target", "${{ github.sha }}", "--title", "Race-O-Rama Online $tag")
           if ($notes) { gh release create $tag @files @common --notes-file $notes @pre }
