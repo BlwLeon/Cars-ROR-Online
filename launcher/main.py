@@ -5,6 +5,22 @@ Start im Entwicklungsmodus:  python main.py
 """
 import os, sys, threading, time
 
+
+def _unblock_own_files():
+    """Dateien aus einer heruntergeladenen Zip tragen unter Windows die Markierung "aus dem Internet"
+    (Zone.Identifier). Das .NET-Framework lädt dann Python.Runtime.dll nicht, und pywebview startet nicht
+    ("Failed to resolve Python.Runtime.Loader.Initialize"). Markierung bei den eigenen Dateien entfernen."""
+    if not getattr(sys, "frozen", False) or sys.platform != "win32":
+        return
+    for root, _dirs, files in os.walk(os.path.dirname(sys.executable)):
+        for f in files:
+            try:
+                os.remove(os.path.join(root, f) + ":Zone.Identifier")
+            except OSError:
+                pass
+
+
+_unblock_own_files()
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from core import paths, settings, rom, melon, servers, save, history, pad, i18n  # noqa: E402
 from core.i18n import T  # noqa: E402
@@ -279,7 +295,30 @@ def _log_errors(cls):
 _log_errors(Api)
 
 
+def _fatal(msg):
+    """Startfehler: ins Logbuch schreiben und als normales Windows-Meldungsfenster zeigen."""
+    try:
+        with open(os.path.join(paths.USER_DIR, "launcher_log.txt"), "a", encoding="utf-8") as f:
+            f.write(time.strftime("[%Y-%m-%d %H:%M:%S] ") + "Startfehler\n" + msg + "\n")
+    except OSError:
+        pass
+    if sys.platform == "win32":
+        import ctypes
+        ctypes.windll.user32.MessageBoxW(None, msg[-1500:] + "\n\n(user\\launcher_log.txt)",
+                                         "Race-O-Rama Online", 0x10)
+    else:
+        print(msg, file=sys.stderr)
+
+
 def main():
+    try:
+        _run()
+    except Exception:
+        import traceback
+        _fatal(traceback.format_exc())
+
+
+def _run():
     import webview
     api = Api()
     win = webview.create_window("Race-O-Rama Online", os.path.join(paths.UI_DIR, "index.html"), js_api=api,

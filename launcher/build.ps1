@@ -44,6 +44,15 @@ Copy-Item -Recurse -Force "dist\RORM-Server\*" (Join-Path $out "server")
 Copy-Item -Force (Join-Path $repo "patch\net.elf") (Join-Path $out "mod")
 Copy-Item -Recurse -Force "melonDS\*" (Join-Path $out "melonDS") -Exclude "melonDS.toml", "*.sav", "*.ml*"
 Copy-Item -Force (Join-Path $repo "LICENSE") (Join-Path $out "LICENSE.txt")
+# .NET darf die mitgelieferte Python.Runtime.dll auch laden, wenn die Dateien aus dem Internet stammen
+Set-Content -Path (Join-Path $out "RORM Online.exe.config") -Encoding UTF8 -Value @'
+<?xml version="1.0" encoding="utf-8"?>
+<configuration>
+  <runtime>
+    <loadFromRemoteSources enabled="true"/>
+  </runtime>
+</configuration>
+'@
 Copy-Item -Force (Join-Path $here "release_readme.txt") (Join-Path $out "README.txt")
 Set-Content -Path (Join-Path $out "VERSION.txt") -Value $Version
 $zip = Join-Path $here "release\RORM-Online-$Version-windows.zip"
