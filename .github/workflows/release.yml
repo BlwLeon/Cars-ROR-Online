@@ -26,7 +26,12 @@ jobs:
           "version=$v" >> $env:GITHUB_OUTPUT
           "tag=v$v" >> $env:GITHUB_OUTPUT
           gh release view "v$v" 2>$null | Out-Null
-          if ($LASTEXITCODE -eq 0) { "exists=true" >> $env:GITHUB_OUTPUT; Write-Host "Release v$v existiert schon - nichts zu tun" }
+          if ($LASTEXITCODE -eq 0) {
+            "exists=true" >> $env:GITHUB_OUTPUT
+            # Vorhandenes Release nicht neu bauen, aber als reguläres "Latest"-Release sichtbar machen
+            gh release edit "v$v" --prerelease=false --latest
+            Write-Host "Release v$v existiert schon - nur als Latest markiert"
+          }
           else { "exists=false" >> $env:GITHUB_OUTPUT }
           exit 0
       - uses: actions/setup-python@v5
