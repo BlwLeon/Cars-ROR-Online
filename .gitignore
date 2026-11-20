@@ -1,0 +1,26 @@
+# Niemals Spieldateien hochladen
+*.nds
+*.sav
+*.sav.*
+*.bak
+*.ml[0-9]
+*.mln
+*.dsv
+*.srm
+arm9*.bin
+ov*.bin
+# Launcher-Laufzeitdaten / Builds
+launcher/user/
+launcher/melonDS/
+launcher/mod/
+launcher/.venv/
+launcher/build/
+launcher/dist/
+launcher/release/
+*.spec
+patch/build/
+server/server_log.txt
+server/server_portlog.txt
+__pycache__/
+*.pyc
+.DS_Store

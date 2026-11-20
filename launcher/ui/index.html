@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Race-O-Rama Online</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<svg style="display:none" xmlns="http://www.w3.org/2000/svg">
+  <symbol id="i-play" viewBox="0 0 24 24"><path fill="currentColor" d="M8 5.5v13a1 1 0 0 0 1.5.86l10.6-6.5a1 1 0 0 0 0-1.72L9.5 4.64A1 1 0 0 0 8 5.5Z"/></symbol>
+  <symbol id="i-flag" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M5 21V4m0 0h11l-2 4 2 4H5"/></symbol>
+  <symbol id="i-server" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="4" width="18" height="7" rx="2"/><rect x="3" y="13" width="18" height="7" rx="2"/><path d="M7 7.5h.01M7 16.5h.01"/></g></symbol>
+  <symbol id="i-gear" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z"/></g></symbol>
+  <symbol id="i-user" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></g></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></g></symbol>
+  <symbol id="i-shield" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" d="M12 3 4 6v6c0 5 3.5 8 8 9 4.5-1 8-4 8-9V6l-8-3Z"/></symbol>
+  <symbol id="i-wave" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 12.5a10 10 0 0 1 14 0M8.5 16a5 5 0 0 1 7 0"/><circle cx="12" cy="19.5" r="1" fill="currentColor"/></g></symbol>
+</svg>
+
+<div class="app">
+  <aside class="side">
+    <div class="brand"><img src="logo.svg" alt=""><div><b>Race-O-Rama</b><span>ONLINE</span></div></div>
+    <nav class="nav">
+      <button data-p="play" class="on"><svg><use href="#i-flag"/></svg><span data-i="nav_play"></span></button>
+      <button data-p="server"><svg><use href="#i-server"/></svg><span data-i="nav_server"></span></button>
+      <button data-p="settings"><svg><use href="#i-gear"/></svg><span data-i="nav_settings"></span></button>
+      <button data-p="profile"><svg><use href="#i-user"/></svg><span data-i="nav_profile"></span></button>
+    </nav>
+    <div class="side-foot">
+      <div class="pill"><span class="dot" id="srvDot"></span><div><span data-i="side_server"></span> · <span id="srvState"></span><b id="srvName">–</b></div></div>
+      <div class="pill" id="hostPill" style="display:none"><span class="dot ok"></span><div><span data-i="side_hosting"></span><b id="hostName">–</b></div></div>
+      <div class="ver" id="ver"></div>
+    </div>
+  </aside>
+
+  <main>
+    <!-- ================= Spielen ================= -->
+    <section class="page on" id="p-play">
+      <div class="hero">
+        <h1 data-i="play_title"></h1>
+        <p class="sub" style="margin:0" data-i="play_sub"></p>
+        <div class="meta">
+          <div><span data-i="play_server"></span><b id="heroServer">–</b></div>
+          <div><span data-i="play_addr"></span><b id="heroAddr">–</b></div>
+          <div><span data-i="play_driver"></span><b id="heroDriver">–</b></div>
+        </div>
+        <div class="row" style="position:relative;z-index:1">
+          <button class="btn primary play" id="btnHostPlay"><svg><use href="#i-wave"/></svg><span data-i="play_host"></span></button>
+          <button class="btn play" id="btnJoinPlay"><svg><use href="#i-play"/></svg><span data-i="play_join"></span></button>
+        </div>
+        <div class="muted small" id="playState" style="margin-top:14px;position:relative;z-index:1"></div>
+      </div>
+      <div class="steps">
+        <div class="card"><b data-i="step1_t"></b><span class="muted small" data-ih="step1"></span></div>
+        <div class="card"><b data-i="step2_t"></b><span class="muted small" data-ih="step2"></span></div>
+        <div class="card"><b data-i="step3_t"></b><span class="muted small" data-ih="step3"></span></div>
+      </div>
+    </section>
+
+    <!-- ================= Server ================= -->
+    <section class="page" id="p-server">
+      <h1 data-i="srv_title"></h1>
+      <p class="sub" data-i="srv_sub"></p>
+      <div class="card">
+        <div class="row" style="justify-content:space-between;margin-bottom:14px">
+          <h2 style="margin:0" data-i="srv_found"></h2>
+          <button class="btn" id="btnSearch"><svg><use href="#i-search"/></svg><span data-i="srv_search"></span></button>
+        </div>
+        <div id="srvList"><div class="empty" data-i="srv_not_searched"></div></div>
+        <div class="msg info" id="tsHint"></div>
+      </div>
+      <div class="grid2" style="margin-top:16px">
+        <div class="card">
+          <h2 data-i="srv_manual"></h2>
+          <div class="row" style="align-items:flex-end">
+            <label class="f" style="flex:1"><span data-i="srv_addr"></span><input type="text" id="manAddr" data-ip="srv_addr_ph"></label>
+            <label class="f" style="width:96px"><span data-i="srv_port"></span><input type="number" id="manPort" value="27015"></label>
+          </div>
+          <button class="btn" id="btnManual" style="margin-top:14px" data-i="srv_apply"></button>
+        </div>
+        <div class="card">
+          <h2 data-i="host_title"></h2>
+          <label class="f"><span data-i="host_name"></span><input type="text" id="hostNameIn" maxlength="32"></label>
+          <div class="row" style="margin-top:14px">
+            <button class="btn primary" id="btnHost"><svg><use href="#i-wave"/></svg><span data-i="host_start"></span></button>
+            <button class="btn danger" id="btnStopHost" style="display:none" data-i="host_stop"></button>
+          </div>
+          <p class="muted small" id="hostInfo" style="margin:12px 0 0" data-ih="host_info"></p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= Einstellungen ================= -->
+    <section class="page" id="p-settings">
+      <h1 data-i="set_title"></h1>
+      <p class="sub" data-i="set_sub"></p>
+      <div class="tabs" id="setTabs">
+        <button data-s="kb" class="on" data-i="tab_kb"></button>
+        <button data-s="pad" data-i="tab_pad"></button>
+        <button data-s="gfx" data-i="tab_gfx"></button>
+        <button data-s="gen" data-i="tab_general"></button>
+      </div>
+      <div class="sub-page on" id="s-kb">
+        <div class="card">
+          <div class="row" style="justify-content:space-between;margin-bottom:8px">
+            <span class="muted small" data-i="kb_hint"></span>
+            <button class="btn ghost" id="btnResetKeys" data-i="kb_default"></button>
+          </div>
+          <div class="binds" id="kbBinds"></div>
+        </div>
+      </div>
+      <div class="sub-page" id="s-pad">
+        <div class="card">
+          <div class="row" style="justify-content:space-between;margin-bottom:8px">
+            <label class="f" style="flex-direction:row;align-items:center;gap:12px"><span data-i="pad_label"></span> <select id="padSel" style="min-width:260px"></select></label>
+            <span class="muted small" data-i="pad_hint"></span>
+          </div>
+          <div class="binds" id="padBinds"></div>
+          <div class="msg info" id="padHint"></div>
+        </div>
+      </div>
+      <div class="sub-page" id="s-gfx">
+        <div class="grid2">
+          <div class="card">
+            <h2 data-i="gfx_screens"></h2>
+            <label class="f"><span data-i="gfx_layout"></span><select id="gLayout"><option value="0" data-i="gfx_l0"></option><option value="1" data-i="gfx_l1"></option><option value="2" data-i="gfx_l2"></option><option value="3" data-i="gfx_l3"></option></select></label>
+            <label class="f" style="margin-top:12px"><span data-i="gfx_size"></span><select id="gSizing"><option value="0" data-i="gfx_s0"></option><option value="1" data-i="gfx_s1"></option><option value="2" data-i="gfx_s2"></option><option value="3" data-i="gfx_s3"></option><option value="4" data-i="gfx_s4"></option><option value="5" data-i="gfx_s5"></option></select></label>
+            <div class="sep"></div>
+            <div class="tog"><div data-i="gfx_swap"></div><label class="sw"><input type="checkbox" id="gSwap"><i></i></label></div>
+            <div class="tog"><div><span data-i="gfx_int"></span><small data-i="gfx_int_s"></small></div><label class="sw"><input type="checkbox" id="gInt"><i></i></label></div>
+            <div class="tog"><div data-i="gfx_filter"></div><label class="sw"><input type="checkbox" id="gFilter"><i></i></label></div>
+          </div>
+          <div class="card">
+            <h2 data-i="gfx_3d"></h2>
+            <label class="f"><span data-i="gfx_rend"></span><select id="gRend"><option value="0" data-i="gfx_r0"></option><option value="1" data-i="gfx_r1"></option></select></label>
+            <label class="f" style="margin-top:16px"><span><span data-i="gfx_res"></span> <span id="gScaleTxt"></span></span><input type="range" id="gScale" min="1" max="8" step="1"></label>
+            <p class="muted small" id="gScaleHint" style="margin:6px 0 0" data-i="gfx_res_hint"></p>
+            <div class="sep"></div>
+            <div class="tog"><div><span data-i="gfx_full"></span><small data-i="gfx_full_s"></small></div><label class="sw"><input type="checkbox" id="gFull"><i></i></label></div>
+          </div>
+        </div>
+      </div>
+      <div class="sub-page" id="s-gen">
+        <div class="grid2">
+          <div class="card">
+            <h2 data-i="gen_lang"></h2>
+            <label class="f"><span data-i="gen_lang_s"></span><select id="langSel"></select></label>
+            <div class="sep"></div>
+            <div class="tog"><div><span data-i="gen_auto"></span><small data-i="gen_auto_s"></small></div><label class="sw"><input type="checkbox" id="autoNav"><i></i></label></div>
+            <div class="tog"><div><span data-i="gen_unlock"></span><small data-i="gen_unlock_s"></small></div><label class="sw"><input type="checkbox" id="unlockAll"><i></i></label></div>
+          </div>
+          <div class="card">
+            <h2 data-i="gen_about"></h2>
+            <div class="row" style="gap:12px;margin-bottom:12px"><img src="logo.svg" style="width:40px"><div><b>Race-O-Rama Online</b><div class="muted small" id="aboutVer"></div></div></div>
+            <p class="muted small" style="line-height:1.55;margin:0" data-i="gen_legal"></p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= Profil ================= -->
+    <section class="page" id="p-profile">
+      <h1 data-i="prof_title"></h1>
+      <p class="sub" data-i="prof_sub"></p>
+      <div class="grid2">
+        <div class="card">
+          <h2 data-i="prof_name"></h2>
+          <div class="row">
+            <input type="text" id="driverName" style="flex:1">
+            <button class="btn" id="btnDriver" data-i="prof_save"></button>
+          </div>
+          <div class="msg" id="profErr"></div>
+          <p class="muted small" style="margin:12px 0 0;line-height:1.5" data-i="prof_name_hint"></p>
+        </div>
+        <div class="card">
+          <h2 data-i="prof_id"></h2>
+          <div class="muted small" data-i="prof_id_s"></div>
+          <div style="font-family:Consolas,monospace;font-size:18px;margin-top:12px;letter-spacing:1px" id="profMac">–</div>
+          <div class="sep"></div>
+          <button class="btn ghost" id="btnUserDir" data-i="prof_folder"></button>
+        </div>
+      </div>
+      <div class="grid3" style="margin-top:16px">
+        <div class="card stat"><b id="stRaces">0</b><span data-i="st_races"></span></div>
+        <div class="card stat"><b id="stWins">0</b><span data-i="st_wins"></span></div>
+        <div class="card stat"><b id="stPod">0</b><span data-i="st_podium"></span></div>
+      </div>
+      <div class="grid2" style="margin-top:16px;grid-template-columns:1fr 2fr">
+        <div class="card"><h2 data-i="prof_rivals"></h2><div id="rivals"></div></div>
+        <div class="card"><h2 data-i="prof_recent"></h2><div id="histBox"></div></div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<!-- ================= Ersteinrichtung ================= -->
+<div class="overlay" id="setup">
+  <div class="setup">
+    <img src="logo.svg" alt="">
+    <div id="setupLang">
+      <h1 data-i="setup_lang"></h1>
+      <div class="row" style="justify-content:center;margin-top:24px" id="langBtns"></div>
+    </div>
+    <div id="setupRom" style="display:none">
+      <h1 data-i="setup_welcome"></h1>
+      <p class="sub" data-i="setup_sub"></p>
+      <div class="card">
+        <div class="legal"><svg><use href="#i-shield"/></svg><div data-ih="setup_legal"></div></div>
+        <div class="row" style="margin-top:18px">
+          <button class="btn primary" id="btnPickRom" data-i="setup_pick"></button>
+          <span class="muted small" id="romPath"></span>
+        </div>
+        <div class="msg" id="setupMsg"></div>
+      </div>
+    </div>
+    <p class="muted small" style="margin-top:22px;opacity:.7" data-i="setup_disclaimer"></p>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+<script src="i18n.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

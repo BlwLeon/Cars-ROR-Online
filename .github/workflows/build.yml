@@ -1,0 +1,46 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  patch:
+    name: Patch (net.elf) aus dem Quellcode bauen
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: LLVM installieren
+        run: sudo apt-get update && sudo apt-get install -y clang lld
+      - name: Bauen
+        run: |
+          cp patch/net.elf /tmp/committed.elf
+          ./patch/build.sh
+          if cmp -s patch/net.elf /tmp/committed.elf; then echo "net.elf entspricht dem Quellcode"; else echo "::warning::net.elf weicht vom eingecheckten Stand ab (anderer Compiler?)"; fi
+
+  windows:
+    name: Windows-Paket
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Launcher, Server und melonDS paketieren
+        shell: pwsh
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: ./launcher/build.ps1 -Version "1.0.0-beta1+${{ github.run_number }}"
+      - name: SHA-256 der Dateien
+        shell: pwsh
+        run: Get-ChildItem -Recurse launcher/release/RORM-Online -Include *.exe,*.elf | Get-FileHash -Algorithm SHA256 | Format-Table -AutoSize Hash, Path
+      - uses: actions/upload-artifact@v4
+        with:
+          name: RORM-Online-windows
+          path: launcher/release/RORM-Online
+          retention-days: 30
