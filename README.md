@@ -13,7 +13,7 @@
   <a href="README.de.md">🇩🇪 Deutsche Version</a>
 </p>
 
-> **Status: beta.** Everything described here works and has been tested with 4 players on different networks,
+> **Status: beta 2** ([changelog](../../releases)). Everything described here works and has been tested with 4 players on different networks,
 > but expect rough edges. Bug reports are very welcome (see [Contributing](#contributing--help-wanted)).
 
 ---
@@ -35,7 +35,8 @@ similar in spirit to Wiimmfi or Super Mario Odyssey Online:
   resends, out-of-order buffering) and race data with low latency.
 * **Lockstep built for the internet** – during a race every console shows all cars with the same small delay,
   which adapts automatically to the ping. Lost packets are re-sent where needed, so races keep running even on bad
-  connections. The race start is synchronised across all players.
+  connections. The race start is frame-exact for everyone: all consoles share the game's sync clock, and if one
+  emulator stutters (shader compiling, loading), the others wait for it.
 * **Comfort patches** – the game can jump straight to *Host* or *Join*, and the unused *Single Card Play*
   (Download Play) button is hidden.
 
@@ -47,10 +48,13 @@ starts the game with one click.
 * 🏁 **Online races for up to 4 players** – including full Grand Prix, collisions and overtaking
 * 🖱️ **One-click play** – *Host a room* or *Join a room*: the game skips the title screen, profile selection and
   menus and lands directly in the lobby
-* 🔍 **Automatic server search** – servers of your friends in your Tailscale network appear by themselves
+* 🔍 **Automatic server search** – servers of your friends appear by themselves: via Tailscale, in your LAN and
+  in VPNs like Radmin VPN or ZeroTier
 * 🖥️ **Host with one click** – starts the server in its own window and shows your address
 * 🔓 **Everything unlocked online** – a separate online profile (profile slot 3) with all cars and tracks;
   your own story profiles stay untouched
+* 📊 **Profile & stats** – races, wins, average place and your most frequent rivals; click a race to see every
+  driver with finish time, best lap and lap times
 * 🎮 **Keyboard & controller mapping** – with the in-game action names (Accelerate, Brake, Ability, Jump …)
 * 🖼️ **Display settings** – screen layout, OpenGL upscaling up to 8×, fullscreen
 * 🌐 **English & German**
@@ -60,7 +64,8 @@ starts the game with one click.
 
 * Windows 10 or 11 (64-bit)
 * Your own, legally obtained copy of **Cars Race-O-Rama (Europe)** as a `.nds` file (game code `B6OP`)
-* To play with friends: [Tailscale](https://tailscale.com) (free) – see [Networking](#networking-tailscale-for-now)
+* To play with friends: [Tailscale](https://tailscale.com) (free, recommended) or another VPN such as Radmin VPN –
+  see [Networking](#networking-tailscale--vpns)
 
 ## Installation
 
@@ -78,7 +83,8 @@ starts the game with one click.
 
 ## Playing
 
-**Everyone** installs Tailscale and joins the same tailnet (invite your friends or share your PC with them).
+**Everyone** installs Tailscale and joins the same tailnet (invite your friends or share your PC with them) – or
+you all join the same Radmin VPN / ZeroTier network. **Everyone in a room needs the same version** of the launcher.
 
 **Host (one player):**
 1. *Server* tab → **Start server**. A server window opens. If Windows asks about the firewall, allow access for
@@ -91,7 +97,7 @@ starts the game with one click.
 
 Then choose the track and go! The host can also play on the same PC as the server.
 
-## Networking (Tailscale for now)
+## Networking (Tailscale & VPNs)
 
 The game itself only needs **outgoing** connections to the server – players never need open ports.
 The **server**, however, must be reachable for everyone. Right now that means one of:
@@ -105,7 +111,7 @@ The **server**, however, must be reachable for everyone. Right now that means on
 * **Public IP / port forwarding** – forward UDP port `27015` to the server PC and give others your public address
   (*Server* tab → *Enter address*). Works, but needs router access.
 
-What we do **not** have yet is a public server that anyone can join without Tailscale. The technology is ready
+What we do **not** have yet is a public server that anyone can join without a VPN. The technology is ready
 (the server runs on any small Linux machine – it is a single Python file), it is mainly a question of hosting.
 
 **Have an idea or want to help?** If you know a better way to make servers reachable without a VPN, or you would
@@ -122,7 +128,8 @@ python server/server.py 27016 --name "My Server"
 ```
 
 Every session writes `server_log.txt` (log) next to the server. Option `--lag/--jitter/--loss` simulates a bad
-connection for testing.
+connection for testing. The server also remembers finished races (players, places, times) until it is restarted;
+the launchers fetch them for the profile stats.
 
 ## Building from source
 
@@ -142,12 +149,14 @@ Technical notes (German) about the game internals and the protocol are in [`docs
 * Other cars are shown with a small delay that grows with the ping (typically 3–6 frames) – the usual trade-off
   of online play on hardware that was built for local wireless.
 * Real DS hardware has not been tested.
+* Track names are not shown in the race history yet (only the track number) – the list is being collected.
+* Races only appear in your profile while the server that hosted them is still running.
 
 ## Contributing / help wanted
 
 * 🐞 **Bugs:** open an [issue](../../issues) and describe what happened. Save states (`Shift+F1` in melonDS) and
-  the files `user\launcher_log.txt` / `server\server_log.txt` help a lot – but please don't upload ROMs.
-* 🌍 **Community server / networking ideas:** see [Networking](#networking-tailscale-for-now).
+  the files `user\launcher_log.txt`, `user\crash_log.txt` (launcher crashes) and `server\server_log.txt` help a lot – but please don't upload ROMs.
+* 🌍 **Community server / networking ideas:** see [Networking](#networking-tailscale--vpns).
 * 🌐 **Translations:** all launcher texts are in `launcher/ui/i18n.js`.
 
 ## Credits

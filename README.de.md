@@ -13,7 +13,7 @@
   <a href="README.md">🇬🇧 English version</a>
 </p>
 
-> **Status: Beta.** Alles hier Beschriebene funktioniert und wurde mit 4 Spielern aus verschiedenen Netzwerken
+> **Status: Beta 2** ([Änderungen](../../releases)). Alles hier Beschriebene funktioniert und wurde mit 4 Spielern aus verschiedenen Netzwerken
 > getestet – mit kleinen Ecken und Kanten ist aber zu rechnen. Fehlermeldungen sind sehr willkommen
 > (siehe [Mithelfen](#mithelfen)).
 
@@ -38,7 +38,8 @@ läuft – ähnlich wie Wiimmfi oder Super Mario Odyssey Online:
   (Bestätigungen, Wiederholungen, Umsortieren) und Renndaten mit geringer Verzögerung.
 * **Lockstep fürs Internet** – im Rennen zeigt jede Konsole alle Autos mit derselben kleinen Verzögerung, die sich
   automatisch an den Ping anpasst. Verlorene Pakete werden gezielt nachgeliefert, sodass Rennen auch bei
-  schlechter Verbindung weiterlaufen. Der Rennstart ist für alle synchron.
+  schlechter Verbindung weiterlaufen. Der Rennstart ist für alle framegenau: Alle Konsolen teilen sich die
+  Sync-Uhr des Spiels, und ruckelt ein Emulator (Shader laden, Ladezeiten), warten die anderen auf ihn.
 * **Komfort-Patches** – das Spiel springt direkt zu *Host* oder *Beitreten*, und der online unbenutzte
   *Single Card Play*-Knopf (Download Play) ist ausgeblendet.
 
@@ -50,10 +51,13 @@ startet das Spiel mit einem Klick.
 * 🏁 **Online-Rennen mit bis zu 4 Spielern** – inklusive Grand Prix, Kollisionen und Überholen
 * 🖱️ **Spielen mit einem Klick** – *Raum hosten* oder *Raum beitreten*: Das Spiel überspringt Titelbild,
   Profilauswahl und Menüs und landet direkt in der Lobby
-* 🔍 **Automatische Server-Suche** – Server deiner Freunde im Tailscale-Netz erscheinen von selbst
+* 🔍 **Automatische Server-Suche** – Server deiner Freunde erscheinen von selbst: über Tailscale, im LAN und in
+  VPNs wie Radmin VPN oder ZeroTier
 * 🖥️ **Hosten mit einem Klick** – startet den Server in einem eigenen Fenster und zeigt deine Adresse
 * 🔓 **Online alles freigeschaltet** – eigenes Online-Profil (Profilplatz 3) mit allen Autos und Strecken;
   deine Story-Profile bleiben unberührt
+* 📊 **Profil & Statistik** – Rennen, Siege, Ø Platz und häufigste Gegner; Klick auf ein Rennen zeigt alle Fahrer
+  mit Zielzeit, bester Runde und Rundenzeiten
 * 🎮 **Tastatur- und Controller-Belegung** – mit den Aktionen im Spiel (Fahren, Bremse, Fähigkeit, Springen …)
 * 🖼️ **Bild-Einstellungen** – Anordnung der Bildschirme, OpenGL-Hochskalierung bis 8×, Vollbild
 * 🌐 **Deutsch & Englisch**
@@ -63,7 +67,8 @@ startet das Spiel mit einem Klick.
 
 * Windows 10 oder 11 (64 Bit)
 * Deine eigene, legal erworbene Kopie von **Cars Race-O-Rama (Europa)** als `.nds`-Datei (Spielcode `B6OP`)
-* Zum Spielen mit Freunden: [Tailscale](https://tailscale.com) (kostenlos) – siehe [Netzwerk](#netzwerk-vorerst-tailscale)
+* Zum Spielen mit Freunden: [Tailscale](https://tailscale.com) (kostenlos, empfohlen) oder ein anderes VPN wie
+  Radmin VPN – siehe [Netzwerk](#netzwerk-tailscale--vpns)
 
 ## Installation
 
@@ -82,7 +87,8 @@ startet das Spiel mit einem Klick.
 
 ## Spielen
 
-**Alle** installieren Tailscale und sind im selben Tailnet (Freunde einladen oder den eigenen PC mit ihnen teilen).
+**Alle** installieren Tailscale und sind im selben Tailnet (Freunde einladen oder den eigenen PC mit ihnen teilen) –
+oder ihr seid alle im selben Radmin-VPN-/ZeroTier-Netz. **Alle in einem Raum brauchen dieselbe Launcher-Version.**
 
 **Host (ein Spieler):**
 1. Reiter *Server* → **Server starten**. Ein Server-Fenster öffnet sich. Fragt Windows nach der Firewall:
@@ -95,7 +101,7 @@ startet das Spiel mit einem Klick.
 
 Dann Strecke wählen und los! Der Host kann auch auf demselben PC spielen, auf dem der Server läuft.
 
-## Netzwerk (vorerst Tailscale)
+## Netzwerk (Tailscale & VPNs)
 
 Das Spiel selbst braucht nur **ausgehende** Verbindungen zum Server – Spieler müssen nie Ports freigeben.
 Der **Server** muss aber für alle erreichbar sein. Aktuell heißt das:
@@ -109,7 +115,7 @@ Der **Server** muss aber für alle erreichbar sein. Aktuell heißt das:
 * **Öffentliche IP / Portfreigabe** – UDP-Port `27015` zum Server-PC weiterleiten und anderen die öffentliche
   Adresse geben (Reiter *Server* → *Adresse eingeben*). Funktioniert, braucht aber Zugriff auf den Router.
 
-Was es **noch nicht** gibt, ist ein öffentlicher Server, dem jeder ohne Tailscale beitreten kann. Die Technik ist
+Was es **noch nicht** gibt, ist ein öffentlicher Server, dem jeder ohne VPN beitreten kann. Die Technik ist
 bereit (der Server läuft auf jedem kleinen Linux-Rechner – es ist eine einzige Python-Datei); es ist vor allem
 eine Frage des Hostings.
 
@@ -127,7 +133,8 @@ python server/server.py 27016 --name "Mein Server"
 ```
 
 Jede Sitzung schreibt `server_log.txt` neben den Server. Mit `--lag/--jitter/--loss` lässt sich eine schlechte
-Verbindung zum Testen simulieren.
+Verbindung zum Testen simulieren. Der Server merkt sich außerdem beendete Rennen (Spieler, Plätze, Zeiten) bis
+zum Neustart; die Launcher holen sie sich für die Profil-Statistik ab.
 
 ## Aus dem Quellcode bauen
 
@@ -148,13 +155,16 @@ alles automatisch. Technische Notizen zu den Interna des Spiels und zum Protokol
 * Andere Autos erscheinen mit einer kleinen Verzögerung, die mit dem Ping wächst (meist 3–6 Frames) – der übliche
   Kompromiss beim Online-Spiel auf Hardware, die für lokales Funken gebaut wurde.
 * Echte DS-Hardware ist nicht getestet.
+* Im Rennverlauf steht noch kein Streckenname (nur die Nummer) – die Liste wird gerade gesammelt.
+* Rennen erscheinen nur im Profil, solange der Server, auf dem sie gefahren wurden, noch läuft.
 
 ## Mithelfen
 
 * 🐞 **Fehler:** Ein [Issue](../../issues) öffnen und beschreiben, was passiert ist. Savestates (`Shift+F1` in
-  melonDS) und die Dateien `user\launcher_log.txt` / `server\server_log.txt` helfen sehr – aber bitte keine ROMs
+  melonDS) und die Dateien `user\launcher_log.txt`, `user\crash_log.txt` (Launcher-Abstürze) und
+  `server\server_log.txt` helfen sehr – aber bitte keine ROMs
   hochladen.
-* 🌍 **Community-Server / Netzwerk-Ideen:** siehe [Netzwerk](#netzwerk-vorerst-tailscale).
+* 🌍 **Community-Server / Netzwerk-Ideen:** siehe [Netzwerk](#netzwerk-tailscale--vpns).
 * 🌐 **Übersetzungen:** Alle Texte des Launchers stehen in `launcher/ui/i18n.js`.
 
 ## Danksagung
