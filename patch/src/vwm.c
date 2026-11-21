@@ -26,6 +26,7 @@ struct vdbg {
     u32 init_cb, init_fail, join_res, last_api, unknown_msg;
     u16 ds_len, ds_bm;
     u32 ds_wait, ds_rebase, lost, net_restart, ds_D, start_hold, sync_fix, ds_pre, ds_grow, ds_repair, ds_repaired;
+    u32 clk_hold, clk_giveup, clk_ahead;   // Netz-Uhr: angehaltene Frames, Abbrüche, letzter Vorsprung
 };
 __attribute__((section(".dbg2"), used)) struct vdbg g_v = { {'C','R','N','E','T','V','W','M'}, 1 };
 
@@ -51,6 +52,16 @@ static int rel_send(u8 type, const u8 *data, u32 len) {
     g_v.relq_full++;
     return 0;
 }
+static int unrel_add_seq(u8 type, const u8 *data, u32 len, u16 seq);
+// Netz-Uhr (Sync-Zähler [mgr+0xA8]): alle Konsolen tauschen ihren Zähler aus. Wer dem langsamsten
+// Mitspieler voraus ist, hält seinen Zähler an (Werte werden nie übersprungen, nur wiederholt).
+// So holt ein Emulator-Hänger (Shader laden usw.) nach dem Sync keinen Vorsprung mehr heraus,
+// die anderen warten einfach mit, bis er wieder gleichauf ist.
+#define CLK_PORT 15
+#define CLK_DEAD 2        // Toleranz in Frames
+#define CLK_MAXHOLD 300   // höchstens 5 s am Stück anhalten (Mitspieler hängt endgültig -> aufgeben)
+static u32 clk_c[4], clk_t[4]; static u8 clk_ok[4], clk_synced; static u32 clk_run, clk_tick; static u8 clk_gaveup;
+static void clk_reset(void) { for (int i = 0; i < 4; i++) clk_ok[i] = 0; clk_synced = 0; clk_run = 0; clk_gaveup = 0; }
 static int unrel_add_seq(u8 type, const u8 *data, u32 len, u16 seq) {
     if (unrel_len + 6 + len > sizeof unrel) return 0;
     u8 *r = unrel + unrel_len;
@@ -195,7 +206,7 @@ static void leave(void) {
     if (g_v.role == R_HOST) rel_send(M_HOST_CLOSE, 0, 0);
     else if (g_v.role == R_CLIENT || join_room) rel_send(M_LEAVE, 0, 0);
     g_v.role = R_NONE; g_v.conn_bm = 0; g_v.my_aid = 0; join_room = 0;
-    parent_cb = connect_cb = mp_cb = 0; mp_started = 0; ds_active = 0; ds_pre_clear();
+    parent_cb = connect_cb = mp_cb = 0; mp_started = 0; ds_active = 0; ds_pre_clear(); clk_reset();
     for (int p = 0; p < 16; p++) { port_cb[p] = 0; port_arg[p] = 0; }
 }
 
@@ -228,7 +239,7 @@ static void connection_lost(void) {
         u8 *b = qcb(connect_cb, 12, 0); if (b) { wr16(b + 2, 1); wr16(b + 8, 6); }
         join_room = 0;
     }
-    ds_have = 0; ds_pre_clear();
+    ds_have = 0; ds_pre_clear(); clk_reset();
     g_v.welcomed = 0; g_v.my_id = 0; hello_due = 0; session_nonce++;
     tx_seq = 1; rx_expect = 1; need_ack = 0; unrel_len = 0;
     for (int i = 0; i < REL_N; i++) relq[i].used = 0;
@@ -270,7 +281,7 @@ static void handle(u8 type, const u8 *d, u32 len, u16 rseq) {
         g_v.join_res = res;
         u8 *b = qcb(connect_cb, 12, 0);
         if (res == 0) {
-            g_v.role = R_CLIENT; g_v.my_aid = aid; g_v.conn_bm = 1 | (1u << aid); ds_pre_clear();
+            g_v.role = R_CLIENT; g_v.my_aid = aid; g_v.conn_bm = 1 | (1u << aid); ds_pre_clear(); clk_reset();
             mcpy(peer_mac[0], d + 2, 6); mcpy(peer_mac[aid & 3], my_mac, 6);
             if (b) { wr16(b + 8, 7); wr16(b + 10, aid); mcpy(b + 12, d + 2, 6); wr16(b + 18, 0x200); wr16(b + 20, 0x22); }
         } else {
@@ -309,6 +320,13 @@ static void handle(u8 type, const u8 *d, u32 len, u16 rseq) {
         u8 pt = d[0] & 15, a = d[1] & 3;
         if ((pu_rx_have[pt] & (1u << a)) && (s16)(rseq - pu_rx_seq[pt][a]) <= 0) break;
         pu_rx_have[pt] |= 1u << a; pu_rx_seq[pt][a] = rseq;
+        if (pt == CLK_PORT) {   // Netz-Uhr eines Mitspielers: [u32 Zähler][synced] - nicht ans Spiel
+            if (len >= 11) {
+                clk_c[a] = rd32(d + 6) + (g_v.last_rtt + d[4]) / 2 + 1;   // + Laufzeit = sein Stand jetzt
+                clk_t[a] = net_frame(); clk_ok[a] = d[10] ? 1 : 0;
+            }
+            break;
+        }
     }   /* fall through */
     case M_PORT: {
         if (len < 6) break;
@@ -323,7 +341,7 @@ static void handle(u8 type, const u8 *d, u32 len, u16 rseq) {
         if ((p->port & 15) == 4 && p->len >= 5 && p->data[0] == 0x05) {
             u32 oneway = (g_v.last_rtt + d[4]) / 2 + 1;
             wr32(p->data + 1, rd32(p->data + 1) + oneway);
-            g_v.sync_fix = oneway;
+            g_v.sync_fix = oneway; clk_synced = 1;
         }
         prx_w++; g_v.port_rx++;
         break;
@@ -479,7 +497,7 @@ s32 vwm_hook_020A0B7C(WMCallback cb, const u8 *pp) {                            
     qcb(cb, 7, 1); return OPERATING;
 }
 s32 vwm_hook_020A0D04(WMCallback cb) {                                            // WM_StartParent
-    g_v.role = R_HOST; g_v.my_aid = 0; g_v.conn_bm = 1; ds_pre_clear(); mcpy(peer_mac[0], my_mac, 6);
+    g_v.role = R_HOST; g_v.my_aid = 0; g_v.conn_bm = 1; ds_pre_clear(); clk_reset(); mcpy(peer_mac[0], my_mac, 6);
     parent_cb = cb;
     host_send(M_HOST_OPEN);
     qcb(cb, 8, 1);   // state 0 = PARENT_START
@@ -682,3 +700,32 @@ s32 vwm_call_0202E230(u8 *info, const u8 *send, u8 *set) {                      
     return 0;
 }
 s32 vwm_call_0202DF74(u8 *info) { (void)info; ds_active = 0; return 0; }             // WM_EndDataSharing
+
+// Aufruf der Zähler-Erhöhung im WLAN-Manager-Takt (0x0202ED54: bl 0x02028F70, r0 = Manager)
+#define G_MGR_TICK ((void (*)(u8 *))0x02028F70)
+void vwm_call_0202ED54(u8 *mgr) {
+    u32 *ctr = (u32 *)(mgr + 0xA8);
+    u32 me = g_v.my_aid & 3, others = g_v.conn_bm & ~(1u << me);
+    if (g_v.role == R_HOST) clk_synced = 1;
+    if (g_v.role != R_NONE && others) {
+        if (++clk_tick >= 3) {   // alle 3 Frames eigenen Stand senden
+            clk_tick = 0;
+            u8 b[11]; b[0] = CLK_PORT; b[1] = (u8)me; wr16(b + 2, (u16)others); wr16(b + 4, 5);
+            wr32(b + 6, *ctr); b[10] = clk_synced;
+            unrel_add_seq(M_PORT_U, b, 11, ++pu_tx_seq[CLK_PORT]);
+        }
+        s32 ahead = -0x7FFFFFFF; u32 now = net_frame();
+        if (clk_synced) for (u32 a = 0; a < 4; a++) {
+            if (!(others & (1u << a)) || !clk_ok[a]) continue;
+            u32 age = now - clk_t[a]; if (age > 240) continue;      // 4 s nichts gehört: nicht auf ihn warten
+            s32 d = (s32)(*ctr - (clk_c[a] + (age < 4 ? age : 4)));
+            if (d > ahead) ahead = d;
+        }
+        g_v.clk_ahead = (u32)ahead;
+        if (ahead > CLK_DEAD && !clk_gaveup) {
+            if (++clk_run <= CLK_MAXHOLD) { (*ctr)--; g_v.clk_hold++; }
+            else { clk_gaveup = 1; g_v.clk_giveup++; }
+        } else if (ahead <= CLK_DEAD) { clk_run = 0; clk_gaveup = 0; }
+    }
+    G_MGR_TICK(mgr);
+}

@@ -132,6 +132,7 @@ $("#btnHost").onclick = async () => {
   const r = await api.host($("#hostNameIn").value.trim());
   if (r.tailscale_ip) $("#hostInfo").innerHTML = t("host_running_ts", { ip: esc(r.tailscale_ip) });
   else $("#hostInfo").textContent = t("host_running_nots");
+  if (r.addrs && r.addrs.length) $("#hostInfo").innerHTML += "<br>" + t("host_addrs", { list: r.addrs.map(x => "<b>" + esc(x.ip) + "</b>" + (x.name ? " (" + esc(x.name) + ")" : "")).join(", ") });
   toast(r.ok ? t("host_started") : t("host_failed"), !r.ok);
   setTimeout(() => { refresh(); search(); }, 900);
 };
@@ -220,6 +221,7 @@ async function loadSettings() {
   sel.innerHTML = B.pads.length ? B.pads.map(p => `<option value="${p.id}">${esc(p.name)}</option>`).join("") : `<option value="0">${esc(t("pad_none"))}</option>`;
   sel.value = B.joystick_id;
   sel.onchange = () => api.set_joystick_id(+sel.value);
+  ST.pad = B.pad_ok; ST.pad_error = B.pad_error;
   if (!ST.pad) msg($("#padHint"), t("pad_missing") + (ST.pad_error ? " (" + ST.pad_error + ")" : ""), "bad");
   else if (!B.pads.length) msg($("#padHint"), t("pad_plug"), "info");
   else $("#padHint").className = "msg";
@@ -259,7 +261,7 @@ async function loadProfile() {
   const s = p.summary;
   $("#stRaces").textContent = s.races; $("#stWins").textContent = s.wins; $("#stPod").textContent = s.podium;
   $("#rivals").innerHTML = s.rivals.length ? s.rivals.map(r => `<div class="bind"><div class="k"><span class="ds">${esc(r.name[0] || "?")}</span>${esc(r.name)}</div>
-      <span class="tag">${esc(t("prof_ahead", { a: r.ahead, r: r.races }))}</span></div>`).join("") : `<div class="empty">${esc(t("prof_norivals"))}</div>`;
+      <span class="tag">${esc(t(r.placed ? "prof_ahead" : "prof_together", { a: r.ahead, r: r.races }))}</span></div>`).join("") : `<div class="empty">${esc(t("prof_norivals"))}</div>`;
   $("#histBox").innerHTML = p.history.length ? `<table><tr><th>${t("th_place")}</th><th>${t("th_rivals")}</th><th>${t("th_track")}</th><th>${t("th_date")}</th></tr>${p.history.map(h => `
       <tr><td><span class="place p${h.place}">${h.place || "–"}</span></td>
       <td>${esc((h.players || []).filter(x => !x.me).map(x => x.name).join(", "))}</td>

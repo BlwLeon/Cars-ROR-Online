@@ -59,11 +59,23 @@ def _worker():
         done.set()
 
 
-threading.Thread(target=_worker, daemon=True, name="sdl").start()
-_ready.wait(5)
+_started = False
+_start_lock = threading.Lock()
+
+
+def _ensure():
+    """SDL erst starten, wenn die Controller-Seite es braucht (nicht beim Launcher-Start:
+    SDL-Video parallel zum Fensteraufbau von WebView2 steht im Verdacht, gelegentliche Startabstürze auszulösen)."""
+    global _started
+    with _start_lock:
+        if not _started:
+            _started = True
+            threading.Thread(target=_worker, daemon=True, name="sdl").start()
+    _ready.wait(5)
 
 
 def _call(fn, *args, timeout=15):
+    _ensure()
     if not _ok:
         return None
     box, done = [], threading.Event()
@@ -77,7 +89,8 @@ HAT_NAMES = {1: "hoch", 2: "rechts", 4: "runter", 8: "links"}
 
 
 def available():
-    return _ok
+    """None = noch nicht geprüft (SDL läuft erst, wenn die Einstellungen geöffnet werden)."""
+    return _ok if _started and _ready.is_set() else None
 
 
 def list_pads():

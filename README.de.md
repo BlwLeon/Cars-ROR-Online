@@ -102,6 +102,10 @@ Der **Server** muss aber für alle erreichbar sein. Aktuell heißt das:
 
 * **Tailscale (empfohlen, vom Launcher genutzt)** – ein kostenloses VPN, das eure PCs in ein privates Netz
   bringt. Keine Router-Einstellungen; der Launcher findet Server im Tailnet automatisch. Ideal für Freundeskreise.
+* **Andere VPNs / LAN (Radmin VPN, ZeroTier, Hamachi, gleiches Heimnetz)** – der Launcher sucht zusätzlich per
+  Broadcast in allen lokalen Netzwerkadaptern. Taucht ein Server trotzdem nicht auf, die VPN-IP des Hosts unter
+  *Server* → *Adresse eingeben* eintragen. Windows stuft Radmin-Adapter oft als *öffentliches* Netz ein – der Host
+  muss den Server in der Firewall also auch für öffentliche Netze erlauben.
 * **Öffentliche IP / Portfreigabe** – UDP-Port `27015` zum Server-PC weiterleiten und anderen die öffentliche
   Adresse geben (Reiter *Server* → *Adresse eingeben*). Funktioniert, braucht aber Zugriff auf den Router.
 

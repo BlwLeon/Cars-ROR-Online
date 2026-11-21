@@ -25,7 +25,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from core import paths, settings, rom, melon, servers, save, history, pad, i18n  # noqa: E402
 from core.i18n import T  # noqa: E402
 
-VERSION = "1.0.0-beta1"
+VERSION = "1.0.0-beta2"
 
 
 class Api:
@@ -38,10 +38,8 @@ class Api:
             with open(os.path.join(paths.USER_DIR, "launcher_log.txt"), "a", encoding="utf-8") as f:
                 f.write(time.strftime("[%H:%M:%S] ") + m + "\n")
         pad.LOG = _plog
-        if pad.ERROR:
-            with open(os.path.join(paths.USER_DIR, "launcher_log.txt"), "a", encoding="utf-8") as f:
-                f.write(time.strftime("[%Y-%m-%d %H:%M:%S] ") + "Controller: " + pad.ERROR + "\n")
         self.srv_checked = 0.0
+        self._hist_lock = threading.Lock()
         threading.Thread(target=self._watch_server, daemon=True).start()
 
     def _watch_server(self):
@@ -52,7 +50,22 @@ class Api:
             except Exception:
                 self.srv_info = None
             self.srv_checked = time.time()
+            n = getattr(self, "_wn", 0) + 1; self._wn = n
+            if self.srv_info and n % 8 == 0:      # alle ~30 s Rennen abholen (Server merkt sie nur bis zum Neustart)
+                self._sync_history()
             time.sleep(4)
+
+    def _sync_history(self):
+        """Rennverlauf vom ausgewählten Server holen und in user/history.json übernehmen."""
+        srv = self.s["server"]
+        try:
+            races = servers.fetch_history(srv["address"], srv["port"], self.s["mac"])
+            if races:
+                with self._hist_lock:
+                    return history.add(races, self.s["mac"])
+        except Exception:
+            pass
+        return None
 
     # ---------- allgemein ----------
     def state(self):
@@ -137,7 +150,8 @@ class Api:
         if not self.s["server"]["address"] or self.s["server"]["address"] in ("", "127.0.0.1"):
             self.s["server"] = {"name": name or "Mein Server", "address": "127.0.0.1", "port": 27015}
             settings.save(self.s)
-        return {"ok": servers.host_running(), "tailscale_ip": ip}
+        addrs = [{"ip": a, "name": n} for a, _p, n in servers.local_ifaces() if a != ip]
+        return {"ok": servers.host_running(), "tailscale_ip": ip, "addrs": addrs}
 
     def stop_host(self):
         servers.stop_host()
@@ -195,6 +209,11 @@ class Api:
         b["keys"] = melon.DS_KEYS
         b["hotkeys"] = list(melon.HOTKEYS)
         b["pads"] = pad.list_pads()
+        b["pad_ok"], b["pad_error"] = bool(pad.available()), pad.ERROR
+        if pad.ERROR and not getattr(self, "_pad_err_logged", False):
+            self._pad_err_logged = True
+            with open(os.path.join(paths.USER_DIR, "launcher_log.txt"), "a", encoding="utf-8") as f:
+                f.write(time.strftime("[%Y-%m-%d %H:%M:%S] ") + "Controller: " + pad.ERROR + "\n")
         b["joy_labels"] = {k: pad.label(v) for k, v in b["joystick"].items()}
         return b
 
@@ -234,7 +253,7 @@ class Api:
             err = None
         except Exception as e:
             prof, err = [], str(e)
-        h = history.load()
+        h = self._sync_history() or history.load()
         online = next((p for p in prof if p.get("online")), None)
         story = next((p["name"] for p in prof if p["used"] and not p.get("online")), "")
         return {"profiles": prof, "error": err, "summary": history.summary(h), "history": h[-50:][::-1],
@@ -315,9 +334,33 @@ def _fatal(msg):
         print(msg, file=sys.stderr)
 
 
+def _crash_logging():
+    """Abstürze ohne Python-Fehlermeldung (z.B. in WebView2/.NET/SDL) landen in user/crash_log.txt."""
+    try:
+        os.makedirs(paths.USER_DIR, exist_ok=True)
+        p = os.path.join(paths.USER_DIR, "crash_log.txt")
+        if os.path.exists(p) and os.path.getsize(p) > 512 * 1024:
+            os.replace(p, p + ".old")
+        f = open(p, "a", encoding="utf-8", buffering=1)
+        f.write(time.strftime("\n=== Start %Y-%m-%d %H:%M:%S ") + f"v{VERSION} pid {os.getpid()} ===\n")
+        import faulthandler
+        faulthandler.enable(file=f, all_threads=True)
+        def hook(a):
+            import traceback
+            f.write(time.strftime("[%H:%M:%S] ") + f"Fehler im Thread {a.thread.name if a.thread else '?'}:\n")
+            f.write("".join(traceback.format_exception(a.exc_type, a.exc_value, a.exc_traceback)))
+        threading.excepthook = hook
+        return f
+    except Exception:
+        return None
+
+
 def main():
+    log = _crash_logging()
     try:
         _run()
+        if log:
+            log.write(time.strftime("[%H:%M:%S] ") + "normal beendet\n")
     except Exception:
         import traceback
         _fatal(traceback.format_exc())
@@ -329,7 +372,13 @@ def _run():
     win = webview.create_window("Race-O-Rama Online", os.path.join(paths.UI_DIR, "index.html"), js_api=api,
                                 width=1100, height=700, min_size=(940, 600), background_color="#0E1014")
     api.window = win
-    webview.start(debug="--debug" in sys.argv)
+    # Eigener WebView2-Datenordner je Installation: zwei Launcher gleichzeitig (z.B. zwei Testordner)
+    # oder ein noch laufender WebView2-Rest der letzten Sitzung blockieren sich so nicht gegenseitig.
+    store = os.path.join(paths.USER_DIR, "webview")
+    try:
+        webview.start(debug="--debug" in sys.argv, storage_path=store)
+    except TypeError:          # ältere pywebview-Version ohne storage_path
+        webview.start(debug="--debug" in sys.argv)
 
 
 if __name__ == "__main__":

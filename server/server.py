@@ -22,9 +22,11 @@ ARGS = ap.parse_args()
 PORT = ARGS.port
 SIM = ARGS.lag > 0 or ARGS.jitter > 0 or ARGS.loss > 0
 PROTO_VER = 2
-MOD_VER = "R10"                        # Stand der Mod (ROM-Patch + Server)
+MOD_VER = "R11"                        # Stand der Mod (ROM-Patch + Server)
 SERVER_NAME = (ARGS.name or socket.gethostname())[:32]
+SERVER_SID = "%08x" % random.getrandbits(32)        # erkennt denselben Server unter mehreren Adressen
 INFO_REQ, INFO_RES = b"CRRO-INFO?", b"CRRO-INFO!"   # "Fußabdruck" für Server-Suche / Launcher
+HIST_REQ, HIST_RES = b"CRRO-HIST?", b"CRRO-HIST!"   # Rennverlauf eines Spielers (MAC) für das Launcher-Profil
 HDR = 10
 M_HELLO, M_WELCOME, M_PING, M_PONG, M_RESET = 1, 2, 3, 4, 5
 M_HOST_OPEN, M_HOST_UPDATE, M_HOST_CLOSE, M_LIST_REQ, M_LIST = 16, 17, 18, 19, 20
@@ -81,6 +83,7 @@ class Room:
         self.members = {0: host}
         self.ggid = self.tgid = 0; self.entry = 1; self.maxent = 3; self.attr = 1; self.ug = b''
         self.chan = 1; self.pmax = 0x200; self.cmax = 0x22
+        self.race = None           # laufendes Rennen: {"start", "last", "macs"}
     def update(self, d):
         self.ggid, self.tgid, self.entry, self.maxent, self.attr, uglen, self.chan = struct.unpack_from('<IHBBBBB', d, 0)
         self.pmax, self.cmax = struct.unpack_from('<HH', d, 12)
@@ -101,14 +104,45 @@ def send_dgram(data, addr):
     sim_n += 1; heapq.heappush(sim_q, (time.time() + sim_delay(), sim_n, 'out', bytes(data), addr))
 def info_reply(addr):
     info = {"game": "Cars Race-O-Rama Online", "mod": MOD_VER, "proto": PROTO_VER, "name": SERVER_NAME,
-            "port": PORT, "players": len(clients),
+            "port": PORT, "sid": SERVER_SID, "players": len(clients),
             "rooms": [{"id": r.id, "players": len(r.members), "max": r.maxent + 1, "open": bool(r.entry)}
                       for r in rooms.values()]}
     try: sock.sendto(INFO_RES + json.dumps(info).encode("utf-8"), addr)
     except OSError: pass
+# ---- Rennverlauf (für die Profil-Statistik im Launcher) ----
+# Namen kommen aus der Lobby (Port 12, Typ 02: [02 00][MAC 6][6 Bytes][Name UTF-16]).
+# Ein Rennen = Zeitraum, in dem Renndaten (M_DS) fließen. Platzierungen: noch offen (Ergebnis-Nachricht
+# muss erst aus einem Mitschnitt bestimmt werden) -> "place": None.
+names = {}         # MAC-bytes -> Fahrername
+races = []         # [{"time", "server", "track", "players": [{"name","mac","place"}]}]
+def learn_name(payload):
+    p = bytes(payload)
+    if len(p) >= 16 and p[0] == 0x02:
+        raw = p[14:14 + 20]
+        n = raw.decode("utf-16-le", "replace").split("\0")[0].strip()
+        if n and n.isprintable(): names[p[2:8]] = n[:10]
+def race_tick(now):
+    for r in rooms.values():
+        rc = r.race
+        if rc and now - rc["last"] > 4.0:
+            r.race = None
+            dur = rc["last"] - rc["start"]
+            if dur >= 20 and len(rc["macs"]) >= 2:
+                e = {"time": time.strftime("%Y-%m-%d %H:%M", time.localtime(rc["start"])), "server": SERVER_NAME,
+                     "track": None, "duration": int(dur),
+                     "players": [{"name": names.get(m) or mac(m), "mac": mac(m), "place": None} for m in rc["macs"]]}
+                races.append(e); del races[:-500]
+                log(f"Raum {r.id}: Rennen beendet ({int(dur)} s, " + ", ".join(p["name"] for p in e["players"]) + ")")
+            if PORTF: PORTF.write(f"{now:.3f} r{r.id} RACE END {dur:.1f}s\n")
+def hist_reply(data, addr):
+    want = data[len(HIST_REQ):].decode("ascii", "replace").strip().upper()
+    res = [e for e in races if any(p["mac"] == want for p in e["players"])][-100:]
+    try: sock.sendto(HIST_RES + json.dumps({"sid": SERVER_SID, "races": res}).encode("utf-8"), addr)
+    except OSError: pass
 def recv_dgram(data, addr):
     global sim_n
     if data[:len(INFO_REQ)] == INFO_REQ: info_reply(addr); return      # Server-Suche: nicht durch den Lag-Simulator
+    if data[:len(HIST_REQ)] == HIST_REQ: hist_reply(data, addr); return
     if not SIM: on_datagram(data, addr); return
     if random.random() * 100 < ARGS.loss: return
     sim_n += 1; heapq.heappush(sim_q, (time.time() + sim_delay(), sim_n, 'in', bytes(data), addr))
@@ -190,6 +224,7 @@ def handle(c, t, d, rseq=0):
         c.stats['port_in'] += 1
         port, _, dest = d[0], d[1], struct.unpack_from('<H', d, 2)[0]
         portlog(c, port, dest, d[6:])
+        if (port & 15) == 12: learn_name(d[6:])
         fwd = bytes([port, c.aid]) + bytes(d[2:4]) + bytes([min(255, int(c.rtt * 60 + 0.5)), 0]) + bytes(d[6:])   # Byte 4 = Ping des Absenders (Frames)
         for aid, m in r.members.items():
             if m is not c and (dest >> aid) & 1: m.send_rel(M_PORT, fwd)
@@ -206,6 +241,12 @@ def handle(c, t, d, rseq=0):
         if not r: return
         c.stats['ds_in'] += 1
         if len(d) > 1: c.rtt = d[1] / 60.0
+        now = time.time()
+        if not r.race:
+            r.race = {"start": now, "last": now, "macs": []}
+            if PORTF: PORTF.write(f"{now:.3f} r{r.id} RACE START\n")
+        r.race["last"] = now
+        if c.mac not in r.race["macs"]: r.race["macs"].append(c.mac)
         fwd = bytes([c.aid]) + bytes(d[1:])
         for m in r.members.values():
             if m is not c: m.send_unrel(M_DS, fwd)
@@ -323,6 +364,7 @@ while True:
             pass
     sim_run()
     now = time.time()
+    race_tick(now)
     for addr, c in list(clients.items()):
         if now - c.last > TIMEOUT:
             leave_room(c, "(Zeitüberschreitung)"); clients.pop(addr); log(f"{c.name()} getrennt (Zeitüberschreitung)")

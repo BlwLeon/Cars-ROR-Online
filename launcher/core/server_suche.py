@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Cars Race-O-Rama Online - Server-Suche.
 
-Sucht Cars-RORM-Server auf diesem PC und bei allen Geräten im eigenen Tailnet
-(Tailscale) und trägt auf Wunsch den gewählten Server in die ROM ein.
+Sucht Cars-RORM-Server auf diesem PC, bei allen Geräten im eigenen Tailnet (Tailscale)
+und per Broadcast in allen lokalen Netzen (LAN, Radmin VPN, ZeroTier, Hamachi ...).
 
   python server_suche.py                         Server auflisten
   python server_suche.py --json                  Ergebnis als JSON (für den Launcher)
@@ -46,20 +46,106 @@ def tailnet_devices():
     return devs
 
 
+_if_cache = (0.0, [])
+
+
+def _flags():
+    return 0x08000000 if sys.platform == "win32" else 0
+
+
+def local_ifaces():
+    """[(ip, präfixlänge, name)] aller IPv4-Adressen dieses PCs (ohne Loopback). 60 s gecacht."""
+    global _if_cache
+    if time.time() - _if_cache[0] < 60:
+        return _if_cache[1]
+    res = []
+    try:
+        if sys.platform == "win32":
+            ps = ("Get-NetIPAddress -AddressFamily IPv4 | Select-Object IPAddress,PrefixLength,InterfaceAlias"
+                  " | ConvertTo-Json -Compress")
+            out = subprocess.run(["powershell", "-NoProfile", "-NonInteractive", "-Command", ps],
+                                 capture_output=True, text=True, timeout=6, creationflags=_flags()).stdout
+            data = json.loads(out or "[]")
+            for e in data if isinstance(data, list) else [data]:
+                res.append((e["IPAddress"], int(e["PrefixLength"]), e.get("InterfaceAlias") or ""))
+        else:
+            out = subprocess.run(["ip", "-4", "-o", "addr"], capture_output=True, text=True, timeout=4).stdout
+            for line in out.splitlines():
+                p = line.split()
+                if "inet" in p:
+                    ip, pre = p[p.index("inet") + 1].split("/")
+                    res.append((ip, int(pre), p[1]))
+    except Exception:
+        pass
+    if not res:      # Notlösung: Adressen des Rechnernamens, Netz /24 annehmen
+        try:
+            for ip in socket.gethostbyname_ex(socket.gethostname())[2]:
+                res.append((ip, 24, ""))
+        except OSError:
+            pass
+    res = [r for r in res if not r[0].startswith(("127.", "169.254."))]
+    _if_cache = (time.time(), res)
+    return res
+
+
+def _ip_int(ip):
+    return int.from_bytes(socket.inet_aton(ip), "big")
+
+
+def _is_tailscale(ip):
+    return (_ip_int(ip) & 0xFFC00000) == 0x64400000      # 100.64.0.0/10
+
+
+def _is_tailscale_safe(ip):
+    try:
+        return _is_tailscale(ip)
+    except OSError:
+        return False
+
+
+def broadcast_targets():
+    """{Broadcast-Adresse: Netzname} für jedes lokale Netz (Tailscale kann kein Broadcast)."""
+    out = {}
+    for ip, pre, name in local_ifaces():
+        if pre >= 31 or pre < 8 or _is_tailscale(ip):
+            continue
+        mask = (0xFFFFFFFF << (32 - pre)) & 0xFFFFFFFF
+        bc = socket.inet_ntoa(((_ip_int(ip) | (~mask & 0xFFFFFFFF))).to_bytes(4, "big"))
+        out[bc] = name
+    return out
+
+
+def _net_name(ip):
+    """Name des lokalen Netzes (z.B. 'Radmin VPN'), in dem eine Adresse liegt."""
+    try:
+        x = _ip_int(ip)
+    except OSError:
+        return None
+    for mine, pre, name in local_ifaces():
+        mask = (0xFFFFFFFF << (32 - pre)) & 0xFFFFFFFF
+        if (x & mask) == (_ip_int(mine) & mask):
+            return name or "LAN"
+    return None
+
+
 def search(port, extra_ips=(), timeout=1.5):
     devs = tailnet_devices()
     targets = {"127.0.0.1": ("dieser PC", True)}
+    for ip, _pre, name in local_ifaces():
+        targets.setdefault(ip, ("dieser PC", True))
     for ip, name, online, me in devs or []:
         if online:
             targets[ip] = (name, me)
     for ip in extra_ips:
         targets.setdefault(ip, (ip, False))
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    s.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
     s.setblocking(False)
     sent = {}
-    for ip in targets:
+    t_bc = time.time()
+    for ip in list(targets) + list(broadcast_targets()) + ["255.255.255.255"]:
         try:
-            s.sendto(INFO_REQ, (ip, port)); sent[ip] = time.time()
+            s.sendto(INFO_REQ, (ip, port)); sent.setdefault(ip, time.time())
         except OSError:
             pass
     found, end = {}, time.time() + timeout
@@ -76,14 +162,23 @@ def search(port, extra_ips=(), timeout=1.5):
             info = json.loads(data[len(INFO_RES):].decode("utf-8"))
         except Exception:
             continue
-        dev, me = targets.get(ip, (ip, False))
+        dev, me = targets.get(ip) or (_net_name(ip) or ip, False)
         info.update(ip=ip, device=dev, local=(ip == "127.0.0.1" or me),
-                    ping_ms=int((time.time() - sent.get(ip, time.time())) * 1000))
+                    ping_ms=int((time.time() - sent.get(ip, t_bc)) * 1000))
         found[ip] = info
-    # derselbe Server kann über 127.0.0.1 UND die eigene Tailscale-IP antworten -> nur einmal zeigen
+    # derselbe Server kann über 127.0.0.1 UND eigene Adressen (Tailscale, LAN, VPN) antworten -> nur einmal zeigen
     res = list(found.values())
     if any(i["ip"] == "127.0.0.1" for i in res):
         res = [i for i in res if not (i["local"] and i["ip"] != "127.0.0.1")]
+    # Server-Kennung (sid): dieselbe Instanz nur einmal - bevorzugt dieser PC, dann Tailscale, dann Rest
+    res.sort(key=lambda i: (i["ip"] != "127.0.0.1", not i["local"], not _is_tailscale_safe(i["ip"]), i["ping_ms"]))
+    seen, uniq = set(), []
+    for i in res:
+        k = i.get("sid")
+        if k and k in seen:
+            continue
+        seen.add(k); uniq.append(i)
+    res = uniq
     res.sort(key=lambda i: (not i["local"], i["ping_ms"]))
     return res, devs
 
@@ -101,7 +196,7 @@ def main():
 
     print()
     if devs is None:
-        print(" Hinweis: Tailscale nicht gefunden oder nicht angemeldet - suche nur auf diesem PC.")
+        print(" Hinweis: Tailscale nicht gefunden - suche auf diesem PC und per Broadcast in lokalen Netzen/VPNs.")
     else:
         print(f" Tailnet: {sum(1 for d in devs if d[2])} Geräte online geprüft.")
     if not res:

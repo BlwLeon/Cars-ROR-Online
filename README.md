@@ -98,6 +98,10 @@ The **server**, however, must be reachable for everyone. Right now that means on
 
 * **Tailscale (recommended, used by the launcher)** – a free VPN that puts your PCs in one private network.
   No router configuration; the launcher finds servers in your tailnet automatically. Great for groups of friends.
+* **Other VPNs / LAN (Radmin VPN, ZeroTier, Hamachi, same home network)** – the launcher also searches every
+  local network adapter by broadcast. If a server still does not show up, enter the host's VPN IP under
+  *Server* → *Enter address*. On Windows, Radmin adapters are often classified as a *public* network, so the
+  host must allow the server through the firewall for public networks too.
 * **Public IP / port forwarding** – forward UDP port `27015` to the server PC and give others your public address
   (*Server* tab → *Enter address*). Works, but needs router access.
 

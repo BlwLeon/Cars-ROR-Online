@@ -1,7 +1,9 @@
 """Server finden (Tailnet + dieser PC) und eigenen Server in einem Konsolenfenster starten."""
 import json, os, socket, subprocess, sys, time
 from . import paths
-from .server_suche import search as _search, tailscale_exe, INFO_REQ, INFO_RES
+from .server_suche import search as _search, tailscale_exe, local_ifaces, INFO_REQ, INFO_RES
+
+HIST_REQ, HIST_RES = b"CRRO-HIST?", b"CRRO-HIST!"
 
 _host = None
 
@@ -35,6 +37,32 @@ def probe(address, port, timeout=1.2):
                     return None
                 info["ping_ms"] = int((time.time() - t0) * 1000)
                 return info
+        return None
+    finally:
+        s.close()
+
+
+def fetch_history(address, port, mac, timeout=1.0):
+    """Rennen dieses Spielers (MAC) vom Server holen -> Liste oder None (Server alt/nicht erreichbar)."""
+    try:
+        ip = socket.gethostbyname(address.strip())
+    except OSError:
+        return None
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    s.settimeout(0.3)
+    try:
+        end = time.time() + timeout
+        while time.time() < end:
+            try:
+                s.sendto(HIST_REQ + mac.upper().encode("ascii"), (ip, int(port)))
+                data, _ = s.recvfrom(65535)
+            except (socket.timeout, OSError):
+                continue
+            if data.startswith(HIST_RES):
+                try:
+                    return json.loads(data[len(HIST_RES):].decode("utf-8")).get("races") or []
+                except ValueError:
+                    return None
         return None
     finally:
         s.close()
