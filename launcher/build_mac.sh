@@ -55,4 +55,11 @@ ditto "$APPDIR" "release-mac/RORM Online.app"
 cp "$HERE/release_readme_mac.txt" "release-mac/LIES MICH - README.txt"
 ditto -c -k --sequesterRsrc release-mac "release-mac-RORM-Online-$VERSION-macos.zip"
 mv "release-mac-RORM-Online-$VERSION-macos.zip" "release-mac/RORM-Online-$VERSION-macos.zip"
-echo "Fertig: $HERE/release-mac/RORM-Online-$VERSION-macos.zip"
+# DMG: übersteht Kopieren/Versenden über Windows, Cloud-Speicher usw. (Zip verliert dort oft Rechte/Symlinks)
+rm -rf dmg-src; mkdir dmg-src
+ditto "$APPDIR" "dmg-src/RORM Online.app"
+cp "$HERE/release_readme_mac.txt" "dmg-src/LIES MICH - README.txt"
+ln -s /Applications dmg-src/Applications
+hdiutil create -volname "RORM Online" -srcfolder dmg-src -ov -format UDZO "release-mac/RORM-Online-$VERSION-macos.dmg"
+rm -rf dmg-src
+echo "Fertig: $HERE/release-mac/RORM-Online-$VERSION-macos.zip (+ .dmg)"

@@ -35,7 +35,9 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: RORM-Online-macos
-          path: launcher/release-mac/*.zip
+          path: |
+            launcher/release-mac/*.zip
+            launcher/release-mac/*.dmg
       - name: Entwurfs-Release "mac-test" aktualisieren
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -45,7 +47,7 @@ jobs:
           gh api repos/${{ github.repository }}/releases -f tag_name=mac-test -f name=mac-test -F draft=true \
             -f target_commitish=${{ github.sha }} -f body="macOS test build (not public)" --jq .upload_url > up.txt
           up=$(sed 's/{.*//' up.txt)
-          for f in launcher/release-mac/*.zip; do
-            curl -fsS -X POST -H "Authorization: Bearer $GH_TOKEN" -H "Content-Type: application/zip" \
+          for f in launcher/release-mac/*.zip launcher/release-mac/*.dmg; do
+            curl -fsS -X POST -H "Authorization: Bearer $GH_TOKEN" -H "Content-Type: application/octet-stream" \
               --data-binary @"$f" "$up?name=$(basename "$f")" > /dev/null
           done
