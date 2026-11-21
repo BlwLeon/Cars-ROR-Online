@@ -165,10 +165,19 @@ def get_bindings():
             "joystick_id": sub(cfg, "Instance0").get("JoystickID", 0)}
 
 
+_ARROWS = (0x01000012, 0x01000013, 0x01000014, 0x01000015)
+
+
+def _plat_key(v):
+    """macOS: Qt meldet Pfeiltasten mit KeypadModifier – melonDS vergleicht dann mit diesem Bit."""
+    v = int(v)
+    return v | 0x20000000 if sys.platform == "darwin" and v in _ARROWS else v
+
+
 def set_bindings(keyboard=None, joystick=None, joystick_id=None):
     ch = {}
     if keyboard is not None:
-        ch["Instance0.Keyboard"] = {k: int(v) for k, v in keyboard.items()}
+        ch["Instance0.Keyboard"] = {k: _plat_key(v) for k, v in keyboard.items()}
     if joystick is not None:
         ch["Instance0.Joystick"] = {k: int(v) for k, v in joystick.items()}
     if joystick_id is not None:
@@ -212,6 +221,11 @@ def prepare(mac, nickname):
         fw["Username"] = nickname[:10]
     apply({"": {"PauseLostFocus": False}, "LAN": {"DirectMode": False}, "Emu": {"DirectBoot": True},
            "Instance0.Firmware": fw})
+    if sys.platform == "darwin":       # Standard-/Alt-Belegung der Pfeiltasten für macOS umschreiben
+        kb = get_bindings()["keyboard"]
+        fix = {k: v for k, v in kb.items() if int(v) in _ARROWS}
+        if fix:
+            set_bindings(keyboard=fix)
 
 
 _proc = None

@@ -3,9 +3,9 @@ Race-O-Rama Online – macOS (Apple Silicon) – TEST BUILD
 
 1. Move "RORM Online.app" into your Applications folder (or anywhere you like).
 2. First start: the app is not signed with a paid Apple developer account, so macOS blocks it.
-   - Double-click the app once and close the warning.
-   - Open System Settings -> Privacy & Security, scroll down: "RORM Online was blocked" -> "Open Anyway".
-   - Alternative (Terminal):  xattr -dr com.apple.quarantine "/Applications/RORM Online.app"
+   Open Terminal (Cmd+Space, type "Terminal") and run:
+       xattr -cr "/Applications/RORM Online.app"
+   Then start the app normally. (Only needed once per download.)
 3. Select your own copy of the game (.nds, Europe / B6OP). No game files are included.
 
 Your data (patched ROM, save, settings, server log) is stored in:
@@ -18,10 +18,9 @@ Race-O-Rama Online – macOS (Apple Silicon) – TESTVERSION
 
 1. "RORM Online.app" in den Programme-Ordner ziehen (oder woanders hin).
 2. Erster Start: Die App ist nicht mit einem kostenpflichtigen Apple-Entwicklerkonto signiert, macOS blockiert sie.
-   - App einmal doppelklicken und die Warnung schließen.
-   - Systemeinstellungen -> Datenschutz & Sicherheit, nach unten scrollen:
-     "RORM Online wurde blockiert" -> "Dennoch öffnen".
-   - Alternativ (Terminal):  xattr -dr com.apple.quarantine "/Applications/RORM Online.app"
+   Terminal öffnen (Cmd+Leertaste, "Terminal" tippen) und eingeben:
+       xattr -cr "/Applications/RORM Online.app"
+   Danach die App ganz normal starten. (Nur einmal pro Download nötig.)
 3. Die eigene Spieldatei auswählen (.nds, Europa / B6OP). Es sind keine Spieldateien enthalten.
 
 Deine Daten (gepatchte ROM, Spielstand, Einstellungen, Server-Log) liegen in:

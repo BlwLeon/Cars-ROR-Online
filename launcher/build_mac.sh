@@ -36,7 +36,7 @@ fi
 
 rm -rf build-mac dist-mac
 "$PY" -m PyInstaller --noconfirm --clean --windowed --name "RORM Online" \
-  --osx-bundle-identifier io.github.blwleon.rormonline \
+  --osx-bundle-identifier io.github.blwleon.rormonline --icon assets/icon.icns \
   --add-data "ui:ui" --add-data "assets/melonDS.default.toml:assets" \
   --add-data "core/patch_rom.py:core" --add-data "core/blzlib.py:core" \
   --add-data "$REPO/patch/net.elf:mod" --add-data "$REPO/server/server.py:server" \
@@ -60,6 +60,16 @@ rm -rf dmg-src; mkdir dmg-src
 ditto "$APPDIR" "dmg-src/RORM Online.app"
 cp "$HERE/release_readme_mac.txt" "dmg-src/LIES MICH - README.txt"
 ln -s /Applications dmg-src/Applications
-hdiutil create -volname "RORM Online" -srcfolder dmg-src -ov -format UDZO "release-mac/RORM-Online-$VERSION-macos.dmg"
+cp assets/icon.icns dmg-src/.VolumeIcon.icns
+hdiutil create -volname "RORM Online" -srcfolder dmg-src -ov -format UDRW dmg-rw.dmg
+MNT=$(hdiutil attach -nobrowse -readwrite dmg-rw.dmg | tail -1 | awk -F'\t' '{print $NF}')
+SetFile -a C "$MNT" 2>/dev/null || xcrun SetFile -a C "$MNT" 2>/dev/null || true   # Laufwerks-Symbol aktivieren
+hdiutil detach "$MNT"
+hdiutil convert dmg-rw.dmg -format UDZO -ov -o "release-mac/RORM-Online-$VERSION-macos.dmg"; rm -f dmg-rw.dmg
+# Symbol auch für die .dmg-Datei selbst (Finder)
+if command -v sips >/dev/null && command -v DeRez >/dev/null; then
+  cp assets/icon.icns /tmp/ic.icns && sips -i /tmp/ic.icns >/dev/null && DeRez -only icns /tmp/ic.icns > /tmp/ic.rsrc &&
+  Rez -append /tmp/ic.rsrc -o "release-mac/RORM-Online-$VERSION-macos.dmg" && SetFile -a C "release-mac/RORM-Online-$VERSION-macos.dmg" || true
+fi
 rm -rf dmg-src
 echo "Fertig: $HERE/release-mac/RORM-Online-$VERSION-macos.zip (+ .dmg)"
