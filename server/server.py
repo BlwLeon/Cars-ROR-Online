@@ -85,6 +85,7 @@ class Room:
         self.chan = 1; self.pmax = 0x200; self.cmax = 0x22
         self.race = None           # laufendes Rennen: {"start", "last", "macs", "res"}
         self.last_race = None      # zuletzt beendetes Rennen (für nachträgliche Zielmeldungen)
+        self.sel = None            # (Strecke, Runden) aus der Lobby-Auswahl des Hosts (Port 13, Typ 0x04)
     def update(self, d):
         self.ggid, self.tgid, self.entry, self.maxent, self.attr, uglen, self.chan = struct.unpack_from('<IHBBBBB', d, 0)
         self.pmax, self.cmax = struct.unpack_from('<HH', d, 12)
@@ -125,8 +126,14 @@ def learn_result(r, payload):
     m = r.members.get(p[1] & 3)
     if not rc or not m: return
     if m.mac not in rc["res"]:
-        rc["res"][m.mac] = struct.unpack_from('<I', p, 2)[0]
+        v = [struct.unpack_from('<I', p, o)[0] for o in range(2, len(p) - 3, 4)]   # Gesamt, beste Runde, Runden...
+        rc["res"][m.mac] = v[0]
+        rc["laps"][m.mac] = {"best_cs": v[1] if len(v) > 1 else None, "laps_cs": [x for x in v[2:] if x]}
         if rc is r.last_race: rc["entry_fix"](rc)
+def learn_selection(r, payload):
+    """Port 13, Typ 0x04 vom Host: [04][09][Strecke][00][Runden]... (vor jedem Rennen)."""
+    p = bytes(payload)
+    if len(p) >= 5 and p[0] == 0x04: r.sel = (p[2], p[4])
 def learn_name(payload):
     p = bytes(payload)
     if len(p) >= 16 and p[0] == 0x02:
@@ -141,12 +148,17 @@ def race_tick(now):
             dur = rc["last"] - rc["start"]
             if dur >= 20 and len(rc["macs"]) >= 2:
                 e = {"time": time.strftime("%Y-%m-%d %H:%M", time.localtime(rc["start"])), "server": SERVER_NAME,
-                     "track": None, "duration": int(dur), "players": []}
+                     "track": rc["track"], "laps": rc["nlaps"], "duration": int(dur), "players": []}
                 rc["entry"] = e
                 def fix(rc):        # Plätze aus den Zielzeiten (spät eintreffende Meldungen werden nachgetragen)
                     order = sorted(rc["res"], key=lambda m: rc["res"][m])
-                    rc["entry"]["players"] = [{"mac": mac(m), "place": (order.index(m) + 1) if m in rc["res"] else None,
-                                               "time_cs": rc["res"].get(m)} for m in rc["macs"]]
+                    best = min(rc["res"].values()) if rc["res"] else 0
+                    rc["entry"]["players"] = [dict({"mac": mac(m), "place": (order.index(m) + 1) if m in rc["res"] else None,
+                                               "time_cs": rc["res"].get(m),
+                                               # Letzter wird vom Spiel ausgezählt, sobald alle anderen im Ziel sind
+                                               # -> unsinnig hohe Zeit statt echter Zielzeit
+                                               "dnf": m not in rc["res"] or (len(rc["res"]) > 1 and rc["res"][m] > 2.5 * best)},
+                                              **rc["laps"].get(m, {})) for m in rc["macs"]]
                 rc["entry_fix"] = fix; fix(rc)
                 r.last_race = rc
                 races.append(e); del races[:-500]
@@ -260,7 +272,9 @@ def handle(c, t, d, rseq=0):
         port, _, dest = d[0], d[1], struct.unpack_from('<H', d, 2)[0]
         portlog(c, port, dest, d[6:])
         if (port & 15) == 12: learn_name(d[6:])
-        elif (port & 15) == 13: learn_result(r, d[6:])
+        elif (port & 15) == 13:
+            learn_result(r, d[6:])
+            if c.aid == 0: learn_selection(r, d[6:])
         fwd = bytes([port, c.aid]) + bytes(d[2:4]) + bytes([min(255, int(c.rtt * 60 + 0.5)), 0]) + bytes(d[6:])   # Byte 4 = Ping des Absenders (Frames)
         for aid, m in r.members.items():
             if m is not c and (dest >> aid) & 1: m.send_rel(M_PORT, fwd)
@@ -279,7 +293,8 @@ def handle(c, t, d, rseq=0):
         if len(d) > 1: c.rtt = d[1] / 60.0
         now = time.time()
         if not r.race:
-            r.race = {"start": now, "last": now, "macs": [], "res": {}}
+            r.race = {"start": now, "last": now, "macs": [], "res": {}, "laps": {},
+                      "track": r.sel[0] if r.sel else None, "nlaps": r.sel[1] if r.sel else None}
             if PORTF: PORTF.write(f"{now:.3f} r{r.id} RACE START\n")
         r.race["last"] = now
         if c.mac not in r.race["macs"]: r.race["macs"].append(c.mac)

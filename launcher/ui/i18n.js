@@ -55,7 +55,7 @@ const I18N = {
     prof_name_hint: "This is your name online. It is stored in the online profile on profile slot 3, which has all cars and tracks unlocked and is selected automatically when you host or join. Your own story profiles are not changed. Letters and digits only, max. 9 – change only while the game is closed.",
     prof_nosave: "No save file yet – start the game once and create a profile.",
     prof_id: "Online ID", prof_id_s: "Your fixed DS ID (MAC) – the server recognises you by it.", prof_folder: "Open data folder",
-    st_races: "Races", st_wins: "Wins", st_podium: "Podium", prof_rivals: "Most frequent rivals", prof_ahead: "{a}/{r} ahead", prof_together: "{r} races together",
+    st_races: "Races", st_wins: "Wins", st_podium: "Podium", st_avg: "Ø Platz", th_time: "Zeit", th_best: "Beste Runde", th_laps: "Runden", th_driver: "Fahrer", dnf: "Ausgezählt", track_n: "Strecke {n}", laps_n: "{n} Runden", laps_1: "1 Runde", hist_click: "Klick auf ein Rennen zeigt alle Fahrer und Zeiten", st_avg: "Avg. place", th_time: "Time", th_best: "Best lap", th_laps: "Laps", th_driver: "Driver", dnf: "DNF", track_n: "Track {n}", laps_n: "{n} laps", laps_1: "1 lap", hist_click: "Click a race for all drivers and times", prof_rivals: "Most frequent rivals", prof_ahead: "{a}/{r} ahead", prof_together: "{r} races together",
     prof_norivals: "No rivals yet", prof_recent: "Recent races", th_place: "Place", th_rivals: "Rivals", th_track: "Track", th_date: "Date",
     prof_nohist: "No online races recorded yet.",
     intro_open: "Getting started", intro_title: "Getting started", intro_sub: "Four steps and you're on the track.",

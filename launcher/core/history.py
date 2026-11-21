@@ -52,6 +52,8 @@ def summary(data=None):
     races = len(data)
     wins = sum(1 for e in data if e.get("place") == 1)
     podium = sum(1 for e in data if e.get("place") in (1, 2, 3))
+    placed = [e["place"] for e in data if e.get("place")]
+    avg = round(sum(placed) / len(placed), 1) if placed else None
     rivals = {}
     for e in data:
         for p in e.get("players", []):
@@ -64,4 +66,4 @@ def summary(data=None):
                 if e["place"] < p["place"]:
                     r["ahead"] += 1
     top = sorted(rivals.values(), key=lambda r: -r["races"])[:8]
-    return {"races": races, "wins": wins, "podium": podium, "rivals": top}
+    return {"races": races, "wins": wins, "podium": podium, "avg_place": avg, "rivals": top}

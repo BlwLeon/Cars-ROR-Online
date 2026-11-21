@@ -151,6 +151,11 @@ td { padding: 11px 10px; border-top: 1px solid var(--line); }
 .place { display: inline-grid; place-items: center; width: 28px; height: 28px; border-radius: 8px; font-weight: 800; background: var(--card-hi); }
 .place.p1 { background: linear-gradient(135deg, #ffd45a, #e09b12); color: #3a2600; }
 .place.p2 { background: linear-gradient(135deg, #e7ecf5, #9aa3b5); color: #1c2230; }
+.hist .hrow { cursor: pointer; }
+.hist .hrow:hover td, .hist .hrow.open td { background: var(--card-hi); }
+.hist .hdet > td { padding: 4px 10px 14px; background: var(--card-hi); border-top: 0; }
+.det td { padding: 7px 10px; } .det th { padding: 6px 10px; } .det tr.me td { color: var(--accent2); }
+.small { font-size: 12px; margin: 0 0 8px; }
 .place.p3 { background: linear-gradient(135deg, #f0a46a, #a65a2a); color: #2b1405; }
 
 /* ---------- Ersteinrichtung ---------- */

@@ -259,14 +259,38 @@ async function loadProfile() {
     toast(r.ok ? t("prof_saved") : r.msg, !r.ok); if (r.ok) loadDriver();
   };
   const s = p.summary;
-  $("#stRaces").textContent = s.races; $("#stWins").textContent = s.wins; $("#stPod").textContent = s.podium;
+  $("#stRaces").textContent = s.races; $("#stWins").textContent = s.wins;
+  $("#stAvg").textContent = s.avg_place == null ? "–" : String(s.avg_place).replace(".", ST.lang === "de" ? "," : ".");
   $("#rivals").innerHTML = s.rivals.length ? s.rivals.map(r => `<div class="bind"><div class="k"><span class="ds">${esc(r.name[0] || "?")}</span>${esc(r.name)}</div>
       <span class="tag">${esc(t(r.placed ? "prof_ahead" : "prof_together", { a: r.ahead, r: r.races }))}</span></div>`).join("") : `<div class="empty">${esc(t("prof_norivals"))}</div>`;
-  $("#histBox").innerHTML = p.history.length ? `<table><tr><th>${t("th_place")}</th><th>${t("th_rivals")}</th><th>${t("th_track")}</th><th>${t("th_date")}</th></tr>${p.history.map(h => `
-      <tr><td><span class="place p${h.place}">${h.place || "–"}</span></td>
+  $("#histBox").innerHTML = p.history.length ? `<p class="muted small">${esc(t("hist_click"))}</p><table class="hist"><tr><th>${t("th_place")}</th><th>${t("th_rivals")}</th><th>${t("th_track")}</th><th>${t("th_time")}</th><th>${t("th_date")}</th></tr>${p.history.map((h, i) => {
+      const me = (h.players || []).find(x => x.me) || {};
+      return `<tr class="hrow" data-h="${i}"><td><span class="place p${h.place}">${h.place || "–"}</span></td>
       <td>${esc((h.players || []).filter(x => !x.me).map(x => x.name).join(", "))}</td>
-      <td class="muted">${esc(h.track || "–")}</td><td class="muted">${esc(h.time)}</td></tr>`).join("")}</table>`
+      <td class="muted">${esc(trackName(h))}</td><td>${me.dnf ? esc(t("dnf")) : esc(fmtCs(me.time_cs))}</td><td class="muted">${esc(h.time)}</td></tr>
+      <tr class="hdet" id="hdet${i}" hidden><td colspan="5">${raceDetail(h)}</td></tr>`; }).join("")}</table>`
     : `<div class="empty">${esc(t("prof_nohist"))}</div>`;
+  $$("#histBox .hrow").forEach(el => el.onclick = () => {
+    const d = $("#hdet" + el.dataset.h); d.hidden = !d.hidden; el.classList.toggle("open", !d.hidden);
+  });
+}
+function fmtCs(cs) {
+  if (cs == null) return "–";
+  const m = Math.floor(cs / 6000), s = Math.floor(cs / 100) % 60, c = cs % 100;
+  return `${m}:${String(s).padStart(2, "0")}.${String(c).padStart(2, "0")}`;
+}
+function trackName(h) {
+  if (h.track == null) return "–";
+  const n = (TRACKS[h.track] || t("track_n", { n: h.track }));
+  return h.laps ? `${n} · ${h.laps === 1 ? t("laps_1") : t("laps_n", { n: h.laps })}` : n;
+}
+const TRACKS = {};     // Strecken-Nummer -> Name (wird ergänzt, sobald die Zuordnung bekannt ist)
+function raceDetail(h) {
+  const ps = [...(h.players || [])].sort((a, b) => (a.place || 99) - (b.place || 99));
+  return `<table class="det"><tr><th>${t("th_place")}</th><th>${t("th_driver")}</th><th>${t("th_time")}</th><th>${t("th_best")}</th><th>${t("th_laps")}</th></tr>${ps.map(x => `
+    <tr class="${x.me ? "me" : ""}"><td><span class="place p${x.place}">${x.place || "–"}</span></td><td><b>${esc(x.name || "?")}</b></td>
+    <td>${x.dnf ? esc(t("dnf")) : esc(fmtCs(x.time_cs))}</td><td class="muted">${x.dnf ? "–" : esc(fmtCs(x.best_cs))}</td>
+    <td class="muted">${x.dnf ? "–" : (x.laps_cs || []).map(fmtCs).map(esc).join(" · ") || "–"}</td></tr>`).join("")}</table>`;
 }
 $("#btnUserDir").onclick = () => api.open_folder("user");
 
@@ -301,9 +325,11 @@ const MOCK = (() => {
     lang: location.hash.includes("setup") ? "" : (location.hash.includes("de") ? "de" : "en"), auto_nav: true, unlock_all: true, intro_seen: !location.hash.includes("intro"), server_name: "DESKTOP-NICO", srv_online: !location.hash.includes("off"), srv_checked: true, srv_ping: 12, mac: "00:09:BF:4A:91:2C", melon: true, playing: false, hosting: location.hash.includes("host"), pad: true } };
   const keys = ["A", "B", "X", "Y", "L", "R", "Start", "Select", "Up", "Down", "Left", "Right"];
   const kb = { A: 88, B: 90, X: 83, Y: 65, L: 81, R: 87, Start: 0x01000004, Select: 0x01000003, Up: 0x01000013, Down: 0x01000015, Left: 0x01000012, Right: 0x01000014, HK_FullscreenToggle: 0x0100003A, HK_SwapScreens: 0x01000001 };
-  const hist = [["2026-11-20 18:42", 1, "Radiator Springs", [["Max", 2], ["Lea", 3], ["Tom", 4]]], ["2026-11-20 18:37", 3, "Wüstenrallye", [["Max", 1], ["Lea", 2], ["Tom", 4]]],
-    ["2026-11-20 18:31", 2, "Hafenrunde", [["Max", 1], ["Lea", 3]]], ["2026-11-20 18:25", 1, "Canyon-Sprint", [["Max", 3], ["Lea", 2]]]]
-    .map(([t, pl, tr, ps]) => ({ time: t, place: pl, track: tr, players: ps.map(([n, p]) => ({ name: n, place: p })) }));
+  const pl = (n, p, tm, me) => ({ name: n, place: p, me, time_cs: tm, best_cs: Math.round(tm / 3.2), laps_cs: [Math.round(tm / 3), Math.round(tm / 3.1), Math.round(tm / 2.9)], dnf: p === 4 });
+  const hist = [
+    { time: "2026-11-20 18:42", place: 1, track: 6, laps: 3, players: [pl("Nico", 1, 9238, true), pl("Max", 2, 9410), pl("Lea", 3, 9877), pl("Tom", 4, 1050109)] },
+    { time: "2026-11-20 18:37", place: 3, track: 3, laps: 1, players: [pl("Max", 1, 10371), pl("Lea", 2, 10520), pl("Nico", 3, 10690, true)] },
+    { time: "2026-11-20 18:31", place: 2, track: 6, laps: 3, players: [pl("Max", 1, 5400), pl("Nico", 2, 5502, true)] }];
   return {
     state: async () => P.state, pick_rom: async () => "F:/Spiele/cars.nds", setup_rom: async () => ({ ok: true, msg: "ROM erkannt: Cars - Race-O-Rama (Europe) (En,Es,It)" }),
     search_servers: async () => (await new Promise(r => setTimeout(r, 300)), { ok: true, tailscale: true, servers: [
@@ -319,7 +345,7 @@ const MOCK = (() => {
     reset_keys: async () => MOCK.get_bindings(), get_display: async () => ({ layout: 0, sizing: 0, swap: false, integer: false, filter: true, renderer: 1, scale: 3, fullscreen: false }),
     set_display: async () => true,
     profile: async () => ({ driver: "Nico", profiles: [{ slot: 0, name: "gwt", used: true }, { slot: 2, name: "Nico", used: true, online: true }], mac: "00:09:BF:4A:91:2C", name_max: 9, history: hist,
-      summary: { races: 4, wins: 2, podium: 4, rivals: [{ name: "Max", races: 4, ahead: 2 }, { name: "Lea", races: 4, ahead: 3 }, { name: "Tom", races: 2, ahead: 2 }] } }),
+      summary: { races: 3, wins: 1, podium: 3, avg_place: 2, rivals: [{ name: "Max", races: 4, ahead: 2 }, { name: "Lea", races: 4, ahead: 3 }, { name: "Tom", races: 2, ahead: 2 }] } }),
     set_name: async () => ({ ok: true }), set_driver_name: async () => ({ ok: true }), open_folder: async () => true, set_lang: async l => (P.state.lang = l, l), set_auto_nav: async v => v, set_unlock_all: async v => v, set_intro_seen: async () => true,
   };
 })();
