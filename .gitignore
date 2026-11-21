@@ -24,3 +24,8 @@ server/server_portlog.txt
 __pycache__/
 *.pyc
 .DS_Store
+launcher/.venv-mac/
+launcher/build-mac/
+launcher/dist-mac/
+launcher/release-mac/
+launcher/melonDS-mac/

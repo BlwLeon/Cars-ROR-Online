@@ -78,6 +78,12 @@ def start_host(name):
     if host_running():
         return _host.pid
     args = ["--name", name] if name else []
+    if paths.MAC and paths.FROZEN:
+        # macOS: der Launcher startet sich selbst als Server (im Hintergrund, Log in Application Support/server)
+        cmd = [sys.executable, "--server"] + args + ["--logdir", paths.SERVER_LOG_DIR]
+        _host = subprocess.Popen(cmd, cwd=paths.BASE, stdin=subprocess.DEVNULL,
+                                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        return _host.pid
     if os.path.exists(paths.SERVER_EXE):
         cmd, cwd = [paths.SERVER_EXE] + args, os.path.dirname(paths.SERVER_EXE)
     else:

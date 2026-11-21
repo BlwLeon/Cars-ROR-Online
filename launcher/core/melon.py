@@ -108,7 +108,7 @@ def _ensure_file():
         except Exception:
             ok = False
     if not ok:
-        os.makedirs(paths.MELON_DIR, exist_ok=True)
+        os.makedirs(os.path.dirname(paths.MELON_TOML), exist_ok=True)
         shutil.copyfile(paths.MELON_TEMPLATE, paths.MELON_TOML)
 
 

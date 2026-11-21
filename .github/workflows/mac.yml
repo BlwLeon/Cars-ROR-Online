@@ -1,0 +1,51 @@
+name: macOS-Testbuild
+
+# Baut die macOS-App (Apple Silicon). Läuft nur auf dem Zweig "mac-test" oder von Hand.
+# Ergebnis: Artefakt + Entwurfs-Release "mac-test" (nicht öffentlich, nur für Tester).
+on:
+  push:
+    branches: [mac-test]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  mac:
+    name: macOS-Paket
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Launcher, Server und melonDS paketieren
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          chmod +x launcher/build_mac.sh
+          v=$(python3 -c "import re;print(re.search(r'VERSION = \"([^\"]+)\"', open('launcher/main.py').read()).group(1))")
+          ./launcher/build_mac.sh "$v-mac${{ github.run_number }}"
+      - name: Selbsttest (Start ohne Fenster bis zum Server-Modus)
+        run: |
+          app="launcher/release-mac/RORM Online.app/Contents/MacOS/RORM Online"
+          ("$app" --server --logdir /tmp/srvtest &) ; sleep 8
+          python3 -c "import socket;s=socket.socket(socket.AF_INET,socket.SOCK_DGRAM);s.settimeout(3);s.sendto(b'CRRO-INFO?',('127.0.0.1',27015));print(s.recvfrom(4096)[0][:200])"
+          pkill -f "RORM Online" || true
+      - uses: actions/upload-artifact@v4
+        with:
+          name: RORM-Online-macos
+          path: launcher/release-mac/*.zip
+      - name: Entwurfs-Release "mac-test" aktualisieren
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          id=$(gh api repos/${{ github.repository }}/releases --jq '.[] | select(.draft and .name=="mac-test") | .id' | head -1)
+          if [ -n "$id" ]; then gh api -X DELETE repos/${{ github.repository }}/releases/$id; fi
+          gh api repos/${{ github.repository }}/releases -f tag_name=mac-test -f name=mac-test -F draft=true \
+            -f target_commitish=${{ github.sha }} -f body="macOS test build (not public)" --jq .upload_url > up.txt
+          up=$(sed 's/{.*//' up.txt)
+          for f in launcher/release-mac/*.zip; do
+            curl -fsS -X POST -H "Authorization: Bearer $GH_TOKEN" -H "Content-Type: application/zip" \
+              --data-binary @"$f" "$up?name=$(basename "$f")" > /dev/null
+          done

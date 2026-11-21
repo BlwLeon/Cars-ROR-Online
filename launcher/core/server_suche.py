@@ -68,6 +68,16 @@ def local_ifaces():
             data = json.loads(out or "[]")
             for e in data if isinstance(data, list) else [data]:
                 res.append((e["IPAddress"], int(e["PrefixLength"]), e.get("InterfaceAlias") or ""))
+        elif sys.platform == "darwin":
+            out = subprocess.run(["ifconfig"], capture_output=True, text=True, timeout=4).stdout
+            dev = ""
+            for line in out.splitlines():
+                if line and not line[0].isspace():
+                    dev = line.split(":")[0]
+                p = line.split()
+                if len(p) >= 4 and p[0] == "inet" and p[2] == "netmask":
+                    m = int(p[3], 16) if p[3].startswith("0x") else _ip_int(p[3])
+                    res.append((p[1], bin(m).count("1"), dev))
         else:
             out = subprocess.run(["ip", "-4", "-o", "addr"], capture_output=True, text=True, timeout=4).stdout
             for line in out.splitlines():

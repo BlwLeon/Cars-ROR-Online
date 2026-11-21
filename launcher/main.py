@@ -20,6 +20,24 @@ def _unblock_own_files():
                 pass
 
 
+def _server_mode():
+    """macOS-Paket: "RORM Online --server ..." startet den mitgelieferten Server statt des Launchers."""
+    if "--server" not in sys.argv:
+        return
+    import runpy
+    here = getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspath(__file__)))
+    src = os.path.join(here, "server", "server.py")
+    if not os.path.exists(src):
+        src = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "server", "server.py")
+    sys.argv = [src] + [a for a in sys.argv[1:] if a != "--server"]
+    try:
+        runpy.run_path(src, run_name="__main__")
+    except KeyboardInterrupt:
+        pass
+    sys.exit(0)
+
+
+_server_mode()
 _unblock_own_files()
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from core import paths, settings, rom, melon, servers, save, history, pad, i18n  # noqa: E402
@@ -302,8 +320,12 @@ class Api:
 
     def open_folder(self, which):
         p = {"user": paths.USER_DIR, "melon": paths.MELON_DIR}.get(which, paths.BASE)
+        os.makedirs(p, exist_ok=True)
         if sys.platform == "win32":
             os.startfile(p)
+        elif sys.platform == "darwin":
+            import subprocess
+            subprocess.Popen(["open", p])
         return True
 
 
@@ -343,6 +365,10 @@ def _fatal(msg):
         import ctypes
         ctypes.windll.user32.MessageBoxW(None, msg[-1500:] + "\n\n(user\\launcher_log.txt)",
                                          "Race-O-Rama Online", 0x10)
+    elif sys.platform == "darwin":
+        import subprocess
+        txt = (msg[-800:] + "\n\n(user/launcher_log.txt)").replace("\\", "/").replace('"', "'")
+        subprocess.run(["osascript", "-e", f'display alert "Race-O-Rama Online" message "{txt}" as critical'])
     else:
         print(msg, file=sys.stderr)
 
@@ -381,6 +407,7 @@ def main():
 
 def _run():
     import webview
+    paths.mac_install_melon()
     api = Api()
     win = webview.create_window("Race-O-Rama Online", os.path.join(paths.UI_DIR, "index.html"), js_api=api,
                                 width=1100, height=700, min_size=(940, 600), background_color="#0E1014")

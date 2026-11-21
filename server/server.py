@@ -18,6 +18,7 @@ ap.add_argument("--name", default=None, help="Servername, der bei der Server-Suc
 ap.add_argument("--lag", type=float, default=0, help="zusätzlicher Ping in ms (Hin+Rück)")
 ap.add_argument("--jitter", type=float, default=0, help="zufällige Schwankung in ms je Paket")
 ap.add_argument("--loss", type=float, default=0, help="Paketverlust in Prozent je Richtung")
+ap.add_argument("--logdir", default=None, help="Ordner für server_log.txt / server_portlog.txt")
 ARGS = ap.parse_args()
 PORT = ARGS.port
 SIM = ARGS.lag > 0 or ARGS.jitter > 0 or ARGS.loss > 0
@@ -40,7 +41,8 @@ DGRAM_MAX = 640
 
 # Log-Datei pro Sitzung: wird bei jedem Serverstart gelöscht und neu angelegt (liegt neben server.py)
 import os
-_HERE = os.path.dirname(sys.executable if getattr(sys, "frozen", False) else os.path.abspath(__file__))
+_HERE = ARGS.logdir or os.path.dirname(sys.executable if getattr(sys, "frozen", False) else os.path.abspath(__file__))
+os.makedirs(_HERE, exist_ok=True)
 LOGPATH = os.path.join(_HERE, "server_log.txt")
 try: LOGF = open(LOGPATH, "w", encoding="utf-8", buffering=1)
 except OSError: LOGF = None
