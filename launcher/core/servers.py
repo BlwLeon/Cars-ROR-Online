@@ -42,7 +42,7 @@ def probe(address, port, timeout=1.2):
         s.close()
 
 
-def fetch_history(address, port, mac, timeout=1.0):
+def fetch_history(address, port, mac, name="", timeout=1.0):
     """Rennen dieses Spielers (MAC) vom Server holen -> Liste oder None (Server alt/nicht erreichbar)."""
     try:
         ip = socket.gethostbyname(address.strip())
@@ -54,7 +54,7 @@ def fetch_history(address, port, mac, timeout=1.0):
         end = time.time() + timeout
         while time.time() < end:
             try:
-                s.sendto(HIST_REQ + mac.upper().encode("ascii"), (ip, int(port)))
+                s.sendto(HIST_REQ + (mac.upper() + "|" + (name or "")).encode("utf-8"), (ip, int(port)))
                 data, _ = s.recvfrom(65535)
             except (socket.timeout, OSError):
                 continue

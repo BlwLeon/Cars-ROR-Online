@@ -55,11 +55,20 @@ class Api:
                 self._sync_history()
             time.sleep(4)
 
+    def _driver_name(self):
+        try:
+            p = next((p for p in save.profiles() if p.get("online") and p["used"]), None)
+            if p:
+                return p["name"]
+        except Exception:
+            pass
+        return self.s.get("player_name") or ""
+
     def _sync_history(self):
         """Rennverlauf vom ausgewählten Server holen und in user/history.json übernehmen."""
         srv = self.s["server"]
         try:
-            races = servers.fetch_history(srv["address"], srv["port"], self.s["mac"])
+            races = servers.fetch_history(srv["address"], srv["port"], self.s["mac"], self._driver_name())
             if races:
                 with self._hist_lock:
                     return history.add(races, self.s["mac"])
@@ -197,6 +206,10 @@ class Api:
             names = [p["name"] for p in used if p["slot"] == slot] or [p["name"] for p in used]
             melon.prepare(self.s["mac"], names[0] if names else "")
             melon.start(paths.ROM_OUT, melon.get_display().get("fullscreen", False))
+            # dem Server den Fahrernamen zu dieser MAC nennen (für Rennverlauf/Statistik)
+            nm = names[0] if names else ""
+            threading.Thread(target=lambda: servers.fetch_history(srv["address"], srv["port"], self.s["mac"], nm),
+                             daemon=True).start()
             return {"ok": True, "ip": ip}
         except OSError as e:
             return {"ok": False, "msg": T("server_unresolvable", e=e)}

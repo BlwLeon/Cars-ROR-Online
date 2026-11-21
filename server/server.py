@@ -83,7 +83,8 @@ class Room:
         self.members = {0: host}
         self.ggid = self.tgid = 0; self.entry = 1; self.maxent = 3; self.attr = 1; self.ug = b''
         self.chan = 1; self.pmax = 0x200; self.cmax = 0x22
-        self.race = None           # laufendes Rennen: {"start", "last", "macs"}
+        self.race = None           # laufendes Rennen: {"start", "last", "macs", "res"}
+        self.last_race = None      # zuletzt beendetes Rennen (für nachträgliche Zielmeldungen)
     def update(self, d):
         self.ggid, self.tgid, self.entry, self.maxent, self.attr, uglen, self.chan = struct.unpack_from('<IHBBBBB', d, 0)
         self.pmax, self.cmax = struct.unpack_from('<HH', d, 12)
@@ -115,6 +116,17 @@ def info_reply(addr):
 # muss erst aus einem Mitschnitt bestimmt werden) -> "place": None.
 names = {}         # MAC-bytes -> Fahrername
 races = []         # [{"time", "server", "track", "players": [{"name","mac","place"}]}]
+def learn_result(r, payload):
+    """Port 13, Typ 0x0E = Zielmeldung: [0E][aid][u32 Gesamtzeit 1/100 s][u32 Runden ...].
+    Der Host leitet die Meldungen der Clients an alle weiter -> pro aid nur einmal zählen."""
+    p = bytes(payload)
+    if len(p) < 6 or p[0] != 0x0E: return
+    rc = r.race or (r.last_race if r.last_race and time.time() - r.last_race["last"] < 15 else None)
+    m = r.members.get(p[1] & 3)
+    if not rc or not m: return
+    if m.mac not in rc["res"]:
+        rc["res"][m.mac] = struct.unpack_from('<I', p, 2)[0]
+        if rc is r.last_race: rc["entry_fix"](rc)
 def learn_name(payload):
     p = bytes(payload)
     if len(p) >= 16 and p[0] == 0x02:
@@ -129,14 +141,37 @@ def race_tick(now):
             dur = rc["last"] - rc["start"]
             if dur >= 20 and len(rc["macs"]) >= 2:
                 e = {"time": time.strftime("%Y-%m-%d %H:%M", time.localtime(rc["start"])), "server": SERVER_NAME,
-                     "track": None, "duration": int(dur),
-                     "players": [{"name": names.get(m) or mac(m), "mac": mac(m), "place": None} for m in rc["macs"]]}
+                     "track": None, "duration": int(dur), "players": []}
+                rc["entry"] = e
+                def fix(rc):        # Plätze aus den Zielzeiten (spät eintreffende Meldungen werden nachgetragen)
+                    order = sorted(rc["res"], key=lambda m: rc["res"][m])
+                    rc["entry"]["players"] = [{"mac": mac(m), "place": (order.index(m) + 1) if m in rc["res"] else None,
+                                               "time_cs": rc["res"].get(m)} for m in rc["macs"]]
+                rc["entry_fix"] = fix; fix(rc)
+                r.last_race = rc
                 races.append(e); del races[:-500]
-                log(f"Raum {r.id}: Rennen beendet ({int(dur)} s, " + ", ".join(p["name"] for p in e["players"]) + ")")
+                log(f"Raum {r.id}: Rennen beendet ({int(dur)} s, " + ", ".join(
+                    f"{names.get(bytes.fromhex(p['mac'].replace(':', ''))) or p['mac']} Platz {p['place'] or '-'}" for p in e["players"]) + ")")
             if PORTF: PORTF.write(f"{now:.3f} r{r.id} RACE END {dur:.1f}s\n")
 def hist_reply(data, addr):
-    want = data[len(HIST_REQ):].decode("ascii", "replace").strip().upper()
-    res = [e for e in races if any(p["mac"] == want for p in e["players"])][-100:]
+    # Anfrage: "CRRO-HIST?" + MAC [+ "|" + Fahrername]. Der Launcher kennt den Namen seines Online-Profils;
+    # aus dem Spiel kommt nur der Name des Hosts (Port 12), Clients schicken ihren nicht über einen Port.
+    q = data[len(HIST_REQ):].decode("utf-8", "replace").strip()
+    want, _, nm = q.partition("|")
+    want = want.strip().upper()
+    try:
+        mb = bytes.fromhex(want.replace(":", ""))
+        nm = "".join(ch for ch in nm if ch.isalnum())[:10]
+        if len(mb) == 6 and nm: names[mb] = nm
+    except ValueError:
+        pass
+    res = []
+    for e in races:
+        if any(p["mac"] == want for p in e["players"]):
+            e2 = dict(e); e2["players"] = [dict(p, name=names.get(bytes.fromhex(p["mac"].replace(":", ""))) or p["mac"])
+                                           for p in e["players"]]
+            res.append(e2)
+    res = res[-100:]
     try: sock.sendto(HIST_RES + json.dumps({"sid": SERVER_SID, "races": res}).encode("utf-8"), addr)
     except OSError: pass
 def recv_dgram(data, addr):
@@ -225,6 +260,7 @@ def handle(c, t, d, rseq=0):
         port, _, dest = d[0], d[1], struct.unpack_from('<H', d, 2)[0]
         portlog(c, port, dest, d[6:])
         if (port & 15) == 12: learn_name(d[6:])
+        elif (port & 15) == 13: learn_result(r, d[6:])
         fwd = bytes([port, c.aid]) + bytes(d[2:4]) + bytes([min(255, int(c.rtt * 60 + 0.5)), 0]) + bytes(d[6:])   # Byte 4 = Ping des Absenders (Frames)
         for aid, m in r.members.items():
             if m is not c and (dest >> aid) & 1: m.send_rel(M_PORT, fwd)
@@ -243,7 +279,7 @@ def handle(c, t, d, rseq=0):
         if len(d) > 1: c.rtt = d[1] / 60.0
         now = time.time()
         if not r.race:
-            r.race = {"start": now, "last": now, "macs": []}
+            r.race = {"start": now, "last": now, "macs": [], "res": {}}
             if PORTF: PORTF.write(f"{now:.3f} r{r.id} RACE START\n")
         r.race["last"] = now
         if c.mac not in r.race["macs"]: r.race["macs"].append(c.mac)

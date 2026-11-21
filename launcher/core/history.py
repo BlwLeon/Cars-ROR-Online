@@ -25,7 +25,7 @@ def _key(e):
 def add(entries, my_mac=None):
     """Neue Einträge übernehmen. my_mac: markiert den eigenen Fahrer ("me") und setzt "place"."""
     data = load()
-    known = {_key(e) for e in data}
+    known = {_key(e): i for i, e in enumerate(data)}
     new = 0
     for e in entries:
         if my_mac:
@@ -35,7 +35,9 @@ def add(entries, my_mac=None):
                     e["place"] = p["place"]
         k = _key(e)
         if k not in known:
-            known.add(k); data.append(e); new += 1
+            known[k] = len(data); data.append(e); new += 1
+        elif data[known[k]] != e:          # Server kennt inzwischen Platz/Namen -> aktualisieren
+            data[known[k]] = e; new += 1
     if new:
         data.sort(key=lambda e: e.get("time") or "")
         tmp = paths.HISTORY + ".tmp"
