@@ -13,7 +13,7 @@
   <a href="README.md">🇬🇧 English version</a>
 </p>
 
-> **Status: Beta 2** ([Änderungen](../../releases)). Alles hier Beschriebene funktioniert und wurde mit 4 Spielern aus verschiedenen Netzwerken
+> **Status: Beta 3** ([Änderungen](../../releases)). Alles hier Beschriebene funktioniert und wurde mit 4 Spielern aus verschiedenen Netzwerken
 > getestet – mit kleinen Ecken und Kanten ist aber zu rechnen. Fehlermeldungen sind sehr willkommen
 > (siehe [Mithelfen](#mithelfen)).
 
@@ -132,7 +132,7 @@ python server/server.py            # UDP-Port 27015
 python server/server.py 27016 --name "Mein Server"
 ```
 
-Jede Sitzung schreibt `server_log.txt` neben den Server. Mit `--lag/--jitter/--loss` lässt sich eine schlechte
+Jede Sitzung schreibt `server_log.txt` neben den Server; die letzten 5 Sitzungen bleiben als `server_log.1.txt` … `server_log.5.txt` erhalten. Mit `--lag/--jitter/--loss` lässt sich eine schlechte
 Verbindung zum Testen simulieren. Der Server merkt sich außerdem beendete Rennen (Spieler, Plätze, Zeiten) bis
 zum Neustart; die Launcher holen sie sich für die Profil-Statistik ab.
 
@@ -155,7 +155,6 @@ alles automatisch. Technische Notizen zu den Interna des Spiels und zum Protokol
 * Andere Autos erscheinen mit einer kleinen Verzögerung, die mit dem Ping wächst (meist 3–6 Frames) – der übliche
   Kompromiss beim Online-Spiel auf Hardware, die für lokales Funken gebaut wurde.
 * Echte DS-Hardware ist nicht getestet.
-* Im Rennverlauf steht noch kein Streckenname (nur die Nummer) – die Liste wird gerade gesammelt.
 * Rennen erscheinen nur im Profil, solange der Server, auf dem sie gefahren wurden, noch läuft.
 
 ## Mithelfen

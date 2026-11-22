@@ -13,7 +13,7 @@
   <a href="README.de.md">🇩🇪 Deutsche Version</a>
 </p>
 
-> **Status: beta 2** ([changelog](../../releases)). Everything described here works and has been tested with 4 players on different networks,
+> **Status: beta 3** ([changelog](../../releases)). Everything described here works and has been tested with 4 players on different networks,
 > but expect rough edges. Bug reports are very welcome (see [Contributing](#contributing--help-wanted)).
 
 ---
@@ -127,7 +127,7 @@ python server/server.py            # UDP port 27015
 python server/server.py 27016 --name "My Server"
 ```
 
-Every session writes `server_log.txt` (log) next to the server. Option `--lag/--jitter/--loss` simulates a bad
+Every session writes `server_log.txt` (log) next to the server; the last 5 sessions are kept as `server_log.1.txt` … `server_log.5.txt`. Option `--lag/--jitter/--loss` simulates a bad
 connection for testing. The server also remembers finished races (players, places, times) until it is restarted;
 the launchers fetch them for the profile stats.
 
@@ -149,7 +149,6 @@ Technical notes (German) about the game internals and the protocol are in [`docs
 * Other cars are shown with a small delay that grows with the ping (typically 3–6 frames) – the usual trade-off
   of online play on hardware that was built for local wireless.
 * Real DS hardware has not been tested.
-* Track names are not shown in the race history yet (only the track number) – the list is being collected.
 * Races only appear in your profile while the server that hosted them is still running.
 
 ## Contributing / help wanted
