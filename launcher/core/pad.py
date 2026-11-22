@@ -36,7 +36,9 @@ def _worker():
         # VIDEO mit starten (ohne Fenster): Erst dann pumpt SDL_PumpEvents die Windows-Nachrichten,
         # über die RawInput/WGI die Controller-Daten liefern – wie in melonDS.
         sdl2.SDL_SetHint(b"SDL_VIDEO_ALLOW_SCREENSAVER", b"1")
-        if sdl2.SDL_Init(sdl2.SDL_INIT_VIDEO | sdl2.SDL_INIT_JOYSTICK) == 0 or sdl2.SDL_Init(sdl2.SDL_INIT_JOYSTICK) == 0:
+        # macOS: SDL-Video darf nur im Hauptthread laufen (Cocoa) -> dort nur Joystick
+        flags = sdl2.SDL_INIT_JOYSTICK if sys.platform == "darwin" else sdl2.SDL_INIT_VIDEO | sdl2.SDL_INIT_JOYSTICK
+        if sdl2.SDL_Init(flags) == 0 or sdl2.SDL_Init(sdl2.SDL_INIT_JOYSTICK) == 0:
             _ok = True
         else:
             ERROR = "SDL_Init: " + (sdl2.SDL_GetError() or b"?").decode("utf-8", "replace")

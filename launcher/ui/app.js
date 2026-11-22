@@ -149,6 +149,12 @@ const QT_NAMES = { 0x01000012: "←", 0x01000013: "↑", 0x01000014: "→", 0x01
   0x01001103: "q_altgr", 0x01000006: "q_ins", 0x01000007: "q_del", 0x01000010: "q_home", 0x01000011: "q_end", 0x01000016: "q_pgup", 0x01000017: "q_pgdn" };
 function qtFromEvent(e) {
   const c = e.code;
+  // Buchstaben nach der Tastaturbelegung (wie Qt/melonDS): QWERTZ-Z/Y und Ä/Ö/Ü richtig erkennen.
+  // Qt-Tastencodes für Buchstaben = Großbuchstabe (Unicode), z.B. Ä = 0xC4.
+  if (e.key && e.key.length === 1 && /\p{L}/u.test(e.key) && !/^Numpad/.test(c)) {
+    const u = e.key.toUpperCase();
+    return (u.length === 1 ? u : e.key).codePointAt(0);
+  }
   if (/^Key[A-Z]$/.test(c)) return c.charCodeAt(3);
   if (/^Digit\d$/.test(c)) return 48 + +c[5];
   if (/^Numpad\d$/.test(c)) return (48 + +c[6]) | 0x20000000;
@@ -158,9 +164,10 @@ function qtFromEvent(e) {
 function qtName(v) {
   if (v == null || v < 0) return "—";
   if (QT_NAMES[v]) return t(QT_NAMES[v]);
+  if ((v & 0x20000000) && (v & 0x0F000000) === 0x01000000 && QT_NAMES[v & ~0x20000000]) return t(QT_NAMES[v & ~0x20000000]);   // macOS: Pfeile mit Keypad-Bit
   if (v >= 0x01000030 && v <= 0x0100003B) return "F" + (v - 0x01000030 + 1);
   if (v & 0x20000000) return "Num " + String.fromCharCode(v & 0xFFFF);
-  if (v >= 32 && v < 127) return String.fromCharCode(v);
+  if ((v >= 32 && v < 127) || (v >= 0xA0 && v < 0x250)) return String.fromCharCode(v);
   return "#" + v;
 }
 const DS_ICON = { A: "", B: "", X: "", Y: "", L: "sq", R: "sq", Start: "wide", Select: "wide", Up: "sq", Down: "sq", Left: "sq", Right: "sq" };
