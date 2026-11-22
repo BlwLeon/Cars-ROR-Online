@@ -28,6 +28,7 @@ struct vdbg {
     u32 ds_wait, ds_rebase, lost, net_restart, ds_D, start_hold, sync_fix, ds_pre, ds_grow, ds_repair, ds_repaired;
     u32 clk_hold, clk_giveup, clk_ahead;   // Netz-Uhr: angehaltene Frames, Abbrüche, letzter Vorsprung
     u32 unrel_drop, rel_defer, pu_drop;     // verworfene unzuverl. Records, aufgeschobene zuverl. Port-Nachrichten
+    u32 clk_ratio;                          // Zähler-Takte je Spiel-Frame x256 (Rennen: Spiel 30 fps, Zähler 60/s)
 };
 __attribute__((section(".dbg2"), used)) struct vdbg g_v = { {'C','R','N','E','T','V','W','M'}, 1 };
 
@@ -60,10 +61,15 @@ static int unrel_add_seq(u8 type, const u8 *data, u32 len, u16 seq);
 // So holt ein Emulator-Hänger (Shader laden usw.) nach dem Sync keinen Vorsprung mehr heraus,
 // die anderen warten einfach mit, bis er wieder gleichauf ist.
 #define CLK_PORT 15
-#define CLK_DEAD 4        // Toleranz in Frames (kleiner: Netzschwankungen lassen alle ständig anhalten)
-#define CLK_EXTRA 6       // so viele Frames wird der Stand eines Mitspielers ohne neue Nachricht hochgerechnet
+#define CLK_DEAD 3        // Toleranz in Zähler-Takten
+#define CLK_EXTRA 8       // so viele Takte wird der Stand eines Mitspielers ohne neue Nachricht hochgerechnet
 #define CLK_MAXHOLD 300   // höchstens 5 s am Stück anhalten (Mitspieler hängt endgültig -> aufgeben)
 static u32 clk_c[4], clk_t[4]; static u8 clk_ok[4], clk_synced; static u32 clk_run, clk_tick; static u8 clk_gaveup;
+// Zeitbasis der Netz-Uhr: Takte des Zählers (clk_now). Ping (last_rtt) wird in Spiel-Frames gemessen; im Rennen
+// läuft das Spiel mit 30 fps, der Zähler aber mit 60/s -> Laufzeit mit clk_ratio umrechnen. Ohne das wurde die
+// Laufzeit halbiert und jede Konsole hielt sich für "voraus" (alle hielten ständig an, Start nicht framegenau).
+static u32 clk_now, clk_ratio = 256, clk_rn, clk_rf, clk_rt;
+static u32 to_ticks(u32 frames) { return (frames * clk_ratio + 128) >> 8; }
 static void clk_reset(void) { for (int i = 0; i < 4; i++) clk_ok[i] = 0; clk_synced = 0; clk_run = 0; clk_gaveup = 0; }
 static int unrel_add_seq(u8 type, const u8 *data, u32 len, u16 seq) {
     // Kein Platz mehr (z.B. großes DS-Paket mit Nachlieferung + Netz-Uhr + Port-5-Daten): erst Bisheriges
@@ -330,7 +336,7 @@ static void handle(u8 type, const u8 *d, u32 len, u16 rseq) {
         pu_rx_have[pt] |= 1u << a; pu_rx_seq[pt][a] = rseq;
         if (pt == CLK_PORT) {   // Netz-Uhr eines Mitspielers: [u32 Zähler][synced] - nicht ans Spiel
             if (len >= 11) {
-                u32 now = net_frame(), s = rd32(d + 6) + (g_v.last_rtt + d[4]) / 2 + 1;   // + Laufzeit = sein Stand jetzt
+                u32 now = clk_now, s = rd32(d + 6) + to_ticks((g_v.last_rtt + d[4]) / 2) + 1;   // + Laufzeit = sein Stand jetzt
                 u32 age = now - clk_t[a]; if (age > CLK_EXTRA) age = CLK_EXTRA;
                 // Verspätete Pakete (Schwankung im Netz) liefern einen zu kleinen Stand -> ignorieren, solange die
                 // Hochrechnung des letzten guten Werts noch gilt. Sonst hält jeder ständig an (Test: ~45 % der Frames).
@@ -354,7 +360,7 @@ static void handle(u8 type, const u8 *d, u32 len, u16 rseq) {
         // der Client übernimmt den Wert. Netzlaufzeit in Frames dazurechnen, sonst läuft der Client
         // um die Laufzeit hinterher (z.B. späterer Rennstart). Byte 4 vom Server = Ping des Absenders.
         if ((p->port & 15) == 4 && p->len >= 5 && p->data[0] == 0x05) {
-            u32 oneway = (g_v.last_rtt + d[4]) / 2 + 1;
+            u32 oneway = to_ticks((g_v.last_rtt + d[4]) / 2) + 1;
             wr32(p->data + 1, rd32(p->data + 1) + oneway);
             g_v.sync_fix = oneway; clk_synced = 1;
         }
@@ -729,6 +735,16 @@ void vwm_call_0202ED54(u8 *mgr) {
     u32 *ctr = (u32 *)(mgr + 0xA8);
     u32 me = g_v.my_aid & 3, others = g_v.conn_bm & ~(1u << me);
     if (g_v.role == R_HOST) clk_synced = 1;
+    clk_now++;
+    {   // Takte je Spiel-Frame messen: Takte während 32 Spiel-Frames zählen (x8 = x256/32), geglättet
+        u32 nf = net_frame();
+        if (!clk_rn) { clk_rn = 1; clk_rf = nf; clk_rt = clk_now; }
+        else if (nf - clk_rf >= 32) {
+            u32 r = (clk_now - clk_rt) << 3; if (r > 1024) r = 1024; if (r < 64) r = 64;
+            clk_ratio = (clk_ratio * 3 + r) >> 2; g_v.clk_ratio = clk_ratio;
+            clk_rf = nf; clk_rt = clk_now;
+        }
+    }
     if (g_v.role != R_NONE && others) {
         if (++clk_tick >= 3) {   // alle 3 Frames eigenen Stand senden
             clk_tick = 0;
@@ -736,10 +752,10 @@ void vwm_call_0202ED54(u8 *mgr) {
             wr32(b + 6, *ctr); b[10] = clk_synced;
             unrel_add_seq(M_PORT_U, b, 11, ++pu_tx_seq[CLK_PORT]);
         }
-        s32 ahead = -0x7FFFFFFF; u32 now = net_frame();
+        s32 ahead = -0x7FFFFFFF; u32 now = clk_now;
         if (clk_synced) for (u32 a = 0; a < 4; a++) {
             if (!(others & (1u << a)) || !clk_ok[a]) continue;
-            u32 age = now - clk_t[a]; if (age > 240) continue;      // 4 s nichts gehört: nicht auf ihn warten
+            u32 age = now - clk_t[a]; if (age > 240) continue;      // ~4 s nichts gehört: nicht auf ihn warten
             s32 d = (s32)(*ctr - (clk_c[a] + (age < CLK_EXTRA ? age : CLK_EXTRA)));
             if (d > ahead) ahead = d;
         }

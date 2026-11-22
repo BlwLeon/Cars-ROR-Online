@@ -37,6 +37,7 @@ NAMES = {1: 'HELLO', 3: 'PING', 16: 'HOST_OPEN', 17: 'HOST_UPDATE', 18: 'HOST_CL
          21: 'JOIN_REQ', 25: 'LEAVE', 26: 'PORT', 30: 'DS'}
 RESEND_MIN = 0.15  # Sekunden bis zur Wiederholung unbestätigter Nachrichten (mindestens; sonst 1,5 x Ping)
 TIMEOUT = 8.0      # Sekunden ohne Lebenszeichen -> Spieler entfernt
+STUCK_AFTER = 20.0 # Sekunden ohne Bestätigungs-Fortschritt bei offenen Nachrichten -> Verbindung zurücksetzen
 DGRAM_MAX = 640
 
 # Log-Datei pro Sitzung (liegt neben server.py bzw. in --logdir)
@@ -61,6 +62,21 @@ def portlog(c, port, dest, payload):
     if PORTF and c.room:
         try: PORTF.write(f"{time.time():.3f} r{c.room.id} a{c.aid} p{port} d{dest:x} {bytes(payload).hex()}\n")
         except OSError: pass
+def _no_quickedit():
+    """Windows-Konsole: Markierungsmodus (QuickEdit) aus. Ein Klick ins Serverfenster startet sonst eine
+    Textauswahl, und die nächste Ausgabe blockiert den GANZEN Server, bis man Enter/Esc drückt - für die Spieler
+    sieht das wie ein eingefrorenes Rennen aus, das sich nur mit einem Server-Neustart löst."""
+    if os.name != "nt": return
+    try:
+        import ctypes
+        k = ctypes.windll.kernel32
+        h = k.GetStdHandle(-10)                      # STD_INPUT_HANDLE
+        mode = ctypes.c_uint32()
+        if k.GetConsoleMode(h, ctypes.byref(mode)):
+            k.SetConsoleMode(h, (mode.value & ~0x0040) | 0x0080)   # ENABLE_QUICK_EDIT_MODE aus, EXTENDED_FLAGS an
+    except Exception:
+        pass
+_no_quickedit()
 def log(msg):
     line = time.strftime("[%H:%M:%S] ") + msg
     print(line, flush=True)
@@ -76,6 +92,7 @@ class Client:
         self.last = time.time()
         self.tx_seq, self.rx_expect = 1, 1
         self.unacked = {}          # seq -> [type, data, last_sent, sacked]
+        self.ack_progress = time.time()   # letzter Fortschritt bei den Bestätigungen (Wächter gegen Hänger)
         self.unrel = []            # (type, data, seq)
         self.ooo = {}              # zu früh angekommene zuverlässige Nachrichten: seq -> (type, data)
         self.rtt = 0.0
@@ -210,8 +227,11 @@ def sim_run():
     now = time.time()
     while sim_q and sim_q[0][0] <= now:
         _, _, d, data, addr = heapq.heappop(sim_q)
-        if d == 'out': sock.sendto(data, addr)
-        else: on_datagram(data, addr)
+        try:
+            if d == 'out': sock.sendto(data, addr)
+            else: on_datagram(data, addr)
+        except OSError: pass
+        except Exception as e: log(f"FEHLER (Simulation) bei Paket von {addr}: {e!r}")
 clients = {}       # addr -> Client
 rooms = {}         # id -> Room
 next_cid, next_rid = 1, 1
@@ -376,9 +396,10 @@ def on_datagram(data, addr):
         c.nonce = nonce
     c.last = time.time()
     ack, sack = struct.unpack_from('<HH', data, 6)
+    if not c.unacked: c.ack_progress = time.time()
     for seq in list(c.unacked):
         dd = (seq - ack) & 0xFFFF
-        if dd == 0 or dd & 0x8000: c.unacked.pop(seq)
+        if dd == 0 or dd & 0x8000: c.unacked.pop(seq); c.ack_progress = time.time()
         elif 2 <= dd < 18 and (sack >> (dd - 2)) & 1: c.unacked[seq][3] = True
     o = HDR
     while o + 6 <= len(data):
@@ -428,6 +449,12 @@ while True:
             recv_dgram(data, addr)
         except ConnectionResetError:
             pass
+        except Exception as e:      # ein kaputtes Paket darf nie den ganzen Server lahmlegen
+            import traceback
+            log(f"FEHLER bei Paket: {e!r}")
+            if LOGF:
+                try: LOGF.write(traceback.format_exc())
+                except OSError: pass
     sim_run()
     now = time.time()
     race_tick(now)
@@ -435,8 +462,15 @@ while True:
         if now - c.last > TIMEOUT:
             leave_room(c, "(Zeitüberschreitung)"); clients.pop(addr); log(f"{c.name()} getrennt (Zeitüberschreitung)")
             continue
+        if c.unacked and now - c.ack_progress > STUCK_AFTER:
+            # Wächter: Spieler sendet noch, bestätigt aber seit langem nichts mehr -> seine Verbindung hängt.
+            # Neu anmelden lassen statt alle bis zu einem Server-Neustart festhängen zu lassen.
+            log(f"{c.name()} WÄCHTER: seit {now - c.ack_progress:.0f} s keine Bestätigung ({len(c.unacked)} offen) - Verbindung wird zurückgesetzt")
+            leave_room(c, "(Verbindung hing)"); clients.pop(addr)
+            send_dgram(b'CR' + bytes([PROTO_VER, 0]) + struct.pack('<HHH', 0, 0, 0) + struct.pack('<BBHHH', M_RESET, 0, 0, 2, c.id), addr)
+            continue
         flush(c)
     if now - last_status > 30 and rooms:
         last_status = now
         for r in rooms.values():
-            log(f"Raum {r.id}: " + ", ".join(f"aid{a}={m.name()} Ping {m.rtt * 1000:.0f} ms DS {m.stats['ds_in']} Port {m.stats['port_in']}" for a, m in r.members.items()))
+            log(f"Raum {r.id}: " + ", ".join(f"aid{a}={m.name()} Ping {m.rtt * 1000:.0f} ms DS {m.stats['ds_in']} Port {m.stats['port_in']}" + (f" offen {len(m.unacked)}/{now - m.ack_progress:.0f}s" if m.unacked else "") for a, m in r.members.items()))
