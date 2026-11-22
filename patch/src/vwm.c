@@ -60,7 +60,8 @@ static int unrel_add_seq(u8 type, const u8 *data, u32 len, u16 seq);
 // So holt ein Emulator-Hänger (Shader laden usw.) nach dem Sync keinen Vorsprung mehr heraus,
 // die anderen warten einfach mit, bis er wieder gleichauf ist.
 #define CLK_PORT 15
-#define CLK_DEAD 2        // Toleranz in Frames
+#define CLK_DEAD 4        // Toleranz in Frames (kleiner: Netzschwankungen lassen alle ständig anhalten)
+#define CLK_EXTRA 6       // so viele Frames wird der Stand eines Mitspielers ohne neue Nachricht hochgerechnet
 #define CLK_MAXHOLD 300   // höchstens 5 s am Stück anhalten (Mitspieler hängt endgültig -> aufgeben)
 static u32 clk_c[4], clk_t[4]; static u8 clk_ok[4], clk_synced; static u32 clk_run, clk_tick; static u8 clk_gaveup;
 static void clk_reset(void) { for (int i = 0; i < 4; i++) clk_ok[i] = 0; clk_synced = 0; clk_run = 0; clk_gaveup = 0; }
@@ -329,8 +330,14 @@ static void handle(u8 type, const u8 *d, u32 len, u16 rseq) {
         pu_rx_have[pt] |= 1u << a; pu_rx_seq[pt][a] = rseq;
         if (pt == CLK_PORT) {   // Netz-Uhr eines Mitspielers: [u32 Zähler][synced] - nicht ans Spiel
             if (len >= 11) {
-                clk_c[a] = rd32(d + 6) + (g_v.last_rtt + d[4]) / 2 + 1;   // + Laufzeit = sein Stand jetzt
-                clk_t[a] = net_frame(); clk_ok[a] = d[10] ? 1 : 0;
+                u32 now = net_frame(), s = rd32(d + 6) + (g_v.last_rtt + d[4]) / 2 + 1;   // + Laufzeit = sein Stand jetzt
+                u32 age = now - clk_t[a]; if (age > CLK_EXTRA) age = CLK_EXTRA;
+                // Verspätete Pakete (Schwankung im Netz) liefern einen zu kleinen Stand -> ignorieren, solange die
+                // Hochrechnung des letzten guten Werts noch gilt. Sonst hält jeder ständig an (Test: ~45 % der Frames).
+                if (!clk_ok[a] || !d[10] || (s32)(s - (clk_c[a] + age)) >= 0 || now - clk_t[a] > CLK_EXTRA) {
+                    clk_c[a] = s; clk_t[a] = now;
+                }
+                clk_ok[a] = d[10] ? 1 : 0;
             }
             break;
         }
@@ -733,7 +740,7 @@ void vwm_call_0202ED54(u8 *mgr) {
         if (clk_synced) for (u32 a = 0; a < 4; a++) {
             if (!(others & (1u << a)) || !clk_ok[a]) continue;
             u32 age = now - clk_t[a]; if (age > 240) continue;      // 4 s nichts gehört: nicht auf ihn warten
-            s32 d = (s32)(*ctr - (clk_c[a] + (age < 4 ? age : 4)));
+            s32 d = (s32)(*ctr - (clk_c[a] + (age < CLK_EXTRA ? age : CLK_EXTRA)));
             if (d > ahead) ahead = d;
         }
         g_v.clk_ahead = (u32)ahead;
