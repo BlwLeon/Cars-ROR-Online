@@ -27,6 +27,7 @@ struct vdbg {
     u16 ds_len, ds_bm;
     u32 ds_wait, ds_rebase, lost, net_restart, ds_D, start_hold, sync_fix, ds_pre, ds_grow, ds_repair, ds_repaired;
     u32 clk_hold, clk_giveup, clk_ahead;   // Netz-Uhr: angehaltene Frames, Abbrüche, letzter Vorsprung
+    u32 unrel_drop, rel_defer, pu_drop;     // verworfene unzuverl. Records, aufgeschobene zuverl. Port-Nachrichten
 };
 __attribute__((section(".dbg2"), used)) struct vdbg g_v = { {'C','R','N','E','T','V','W','M'}, 1 };
 
@@ -39,7 +40,8 @@ static u8 need_ack, hello_due;
 static u32 last_rx;
 static u16 session_nonce = 1;   // neue Sitzung nach Verbindungsverlust
 static u8 dg[DGRAM_MAX];
-static u8 unrel[512]; static u32 unrel_len;   // ausstehende unzuverlässige Records (DS, Ping)
+static u8 unrel[DGRAM_MAX - HDR]; static u32 unrel_len;   // ausstehende unzuverlässige Records (DS, Ping) - passt immer in 1 Datagramm
+static void flush(int force);
 
 static int rel_send(u8 type, const u8 *data, u32 len) {
     if (len > REL_DATA) return 0;
@@ -63,7 +65,10 @@ static int unrel_add_seq(u8 type, const u8 *data, u32 len, u16 seq);
 static u32 clk_c[4], clk_t[4]; static u8 clk_ok[4], clk_synced; static u32 clk_run, clk_tick; static u8 clk_gaveup;
 static void clk_reset(void) { for (int i = 0; i < 4; i++) clk_ok[i] = 0; clk_synced = 0; clk_run = 0; clk_gaveup = 0; }
 static int unrel_add_seq(u8 type, const u8 *data, u32 len, u16 seq) {
-    if (unrel_len + 6 + len > sizeof unrel) return 0;
+    // Kein Platz mehr (z.B. großes DS-Paket mit Nachlieferung + Netz-Uhr + Port-5-Daten): erst Bisheriges
+    // absenden statt den neuen Record still zu verwerfen. Früher ging so bei 4 Spielern das DS-Paket verloren.
+    if (unrel_len && unrel_len + 6 + len > sizeof unrel) flush(0);
+    if (unrel_len + 6 + len > sizeof unrel) { g_v.unrel_drop++; return 0; }
     u8 *r = unrel + unrel_len;
     r[0] = type; r[1] = 0; wr16(r + 2, seq); wr16(r + 4, (u16)len); mcpy(r + 6, data, len);
     unrel_len += 6 + len;
@@ -163,7 +168,7 @@ static struct room rooms[4]; static u32 rooms_n, rr_idx, list_req_at;
 static u16 join_room;
 
 // Port-Empfang (Server -> Spiel)
-#define PR_N 8
+#define PR_N 24          // Port-Nachrichten für das Spiel; die letzten 8 Plätze nur für zuverlässige
 struct portrx { u8 port, aid; u16 len; u8 data[520]; };
 static struct portrx prx[PR_N]; static u32 prx_w, prx_r;
 
@@ -249,6 +254,8 @@ static void connection_lost(void) {
 }
 
 // ---------------- Empfang vom Server ----------------
+// Zuverlässige Nachricht jetzt annehmen? Port-Nachrichten nur, wenn die Warteschlange zum Spiel Platz hat.
+static int rx_ok(u8 type) { return type != M_PORT || prx_w - prx_r < PR_N; }
 static void handle(u8 type, const u8 *d, u32 len, u16 rseq) {
     switch (type) {
     case M_RESET:      // Server kennt uns nicht (Neustart): Verbindung als verloren behandeln
@@ -330,7 +337,8 @@ static void handle(u8 type, const u8 *d, u32 len, u16 rseq) {
     }   /* fall through */
     case M_PORT: {
         if (len < 6) break;
-        if (prx_w - prx_r >= PR_N) { g_v.rel_drop++; break; }
+        if (type == M_PORT_U && prx_w - prx_r >= PR_N - 8) { g_v.pu_drop++; break; }   // Platz für zuverlässige lassen
+        if (prx_w - prx_r >= PR_N) { g_v.rel_drop++; break; }   // (zuverlässige werden vorher zurückgehalten, s. rx_ok)
         struct portrx *p = &prx[prx_w % PR_N];
         p->port = d[0]; p->aid = d[1]; p->len = (u16)(len - 6);
         if (p->len > sizeof p->data) break;
@@ -403,12 +411,17 @@ void vwm_on_udp(const u8 *data, u32 len) {
         if (rel) {
             need_ack = 1;
             s16 d = (s16)(seq - rx_expect);
-            if (d == 0) {
+            if (d == 0 && !rx_ok(type)) {
+                // Port-Warteschlange voll: NICHT annehmen (kein rx_expect++). Der Server schickt die Nachricht
+                // erneut. Früher wurde sie bestätigt und verworfen -> Spielnachricht fehlte für immer
+                // ("Warten auf andere Spieler" endlos, Positionen eingefroren - v.a. bei 4 Spielern).
+                g_v.rel_defer++;
+            } else if (d == 0) {
                 rx_expect++; g_v.rel_rx++; handle(type, pl, l, seq);
                 // zwischengespeicherte Nachfolger ausliefern
                 for (int again = 1; again; ) {
                     again = 0;
-                    for (int i = 0; i < OOO_N; i++) if (ooo[i].used && ooo[i].seq == rx_expect) {
+                    for (int i = 0; i < OOO_N; i++) if (ooo[i].used && ooo[i].seq == rx_expect && rx_ok(ooo[i].type)) {
                         ooo[i].used = 0; rx_expect++; g_v.rel_rx++;
                         handle(ooo[i].type, ooo[i].data, ooo[i].len, ooo[i].seq); again = 1;
                     }
@@ -423,6 +436,8 @@ void vwm_on_udp(const u8 *data, u32 len) {
         } else handle(type, pl, l, seq);
         o += 6 + l;
     }
+    // veraltete Zwischenspeicher-Einträge freigeben (Nachricht kam inzwischen in Reihenfolge an)
+    for (int i = 0; i < OOO_N; i++) if (ooo[i].used && (s16)(ooo[i].seq - rx_expect) < 0) ooo[i].used = 0;
 }
 
 // ---------------- Pro Frame ----------------

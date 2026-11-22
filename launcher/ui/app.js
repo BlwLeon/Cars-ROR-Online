@@ -284,7 +284,9 @@ function trackName(h) {
   const n = (TRACKS[h.track] || t("track_n", { n: h.track }));
   return h.laps ? `${n} · ${h.laps === 1 ? t("laps_1") : t("laps_n", { n: h.laps })}` : n;
 }
-const TRACKS = {};     // Strecken-Nummer -> Name (wird ergänzt, sobald die Zuordnung bekannt ist)
+// Strecken-Nummer aus der Lobby-Auswahl -> Ort. Die Varianten 1-3 einer Strecke haben dieselbe Nummer.
+const TRACKS = { 0: "Autovia", 1: "Tailfin Pass", 2: "Radiator Springs Speedway", 3: "Motoropolis",
+                 4: "Ornament Valley", 5: "Santa Carburera", 6: "Radiator Springs", 9: "Mine Shaft" };
 function raceDetail(h) {
   const ps = [...(h.players || [])].sort((a, b) => (a.place || 99) - (b.place || 99));
   return `<table class="det"><tr><th>${t("th_place")}</th><th>${t("th_driver")}</th><th>${t("th_time")}</th><th>${t("th_best")}</th><th>${t("th_laps")}</th></tr>${ps.map(x => `

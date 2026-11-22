@@ -59,7 +59,12 @@ def summary(data=None):
         for p in e.get("players", []):
             if p.get("me"):
                 continue
-            r = rivals.setdefault(p["name"], {"name": p["name"], "races": 0, "ahead": 0, "placed": 0})
+            # nach MAC (Online-ID) zusammenfassen, damit ein umbenannter Spieler nur einmal auftaucht;
+            # angezeigt wird sein neuester Name (Einträge sind nach Zeit sortiert)
+            key = (p.get("mac") or "").upper() or p.get("name")
+            r = rivals.setdefault(key, {"name": p.get("name"), "races": 0, "ahead": 0, "placed": 0})
+            if p.get("name") and not (p["name"].count(":") == 5 and r["name"]):   # MAC als Ersatzname nicht bevorzugen
+                r["name"] = p["name"]
             r["races"] += 1
             if e.get("place") and p.get("place"):
                 r["placed"] += 1
