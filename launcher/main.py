@@ -194,7 +194,11 @@ class Api:
         try:
             # neue Mod-Version mitgeliefert -> ROM aus der eigenen Original-ROM neu erstellen
             h = rom.elf_hash()
-            if h and h != self.s.get("elf_hash") and self.s.get("rom_source") and os.path.exists(self.s["rom_source"]):
+            if h and h != self.s.get("elf_hash") and not (self.s.get("rom_source") and os.path.exists(self.s["rom_source"])):
+                # neue Mod-Version, aber die Original-ROM ist verschoben/gelöscht: NICHT mit der alten Version
+                # weiterspielen (Mitspieler hätten eine andere Netz-Version -> Desyncs), sondern neu auswählen lassen
+                return {"ok": False, "need_rom": True, "msg": T("rom_source_missing")}
+            if h and h != self.s.get("elf_hash"):
                 r = rom.patch(self.s["rom_source"])
                 if not r["ok"]:
                     return r

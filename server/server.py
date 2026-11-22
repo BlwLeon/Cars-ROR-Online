@@ -141,12 +141,12 @@ def learn_result(r, payload):
         rc["laps"][m.mac] = {"best_cs": v[1] if len(v) > 1 else None, "laps_cs": [x for x in v[2:] if x]}
         if rc is r.last_race: rc["entry_fix"](rc)
 def learn_selection(r, payload):
-    """Port 13, Typ 0x04 vom Host: [04][09][Strecke][00][Runden]... (vor jedem Rennen)."""
+    """Port 13, Typ 0x04 vom Host: [04][09][Strecke][Variante][Runden]... (vor jedem Rennen)."""
     p = bytes(payload)
     if len(p) >= 5 and p[0] == 0x04:
-        if r.sel != (p[2], p[4]):
-            log(f"Raum {r.id}: Host hat gewählt: STRECKE {p[2]} ({p[4]} Runde{'n' if p[4] != 1 else ''})")
-        r.sel = (p[2], p[4])
+        if r.sel != (p[2], p[4], p[3]):
+            log(f"Raum {r.id}: Host hat gewählt: STRECKE {p[2]} Variante {p[3] + 1} ({p[4]} Runde{'n' if p[4] != 1 else ''})")
+        r.sel = (p[2], p[4], p[3])
 def learn_name(payload):
     p = bytes(payload)
     if len(p) >= 16 and p[0] == 0x02:
@@ -159,9 +159,9 @@ def race_tick(now):
         if rc and now - rc["last"] > 4.0:
             r.race = None
             dur = rc["last"] - rc["start"]
-            if dur >= 20 and len(rc["macs"]) >= 2:
+            if dur >= 20 and len(rc["macs"]) >= 2 and rc["res"]:   # ohne Zielmeldung (abgebrochen) nicht zählen
                 e = {"time": time.strftime("%Y-%m-%d %H:%M", time.localtime(rc["start"])), "server": SERVER_NAME,
-                     "track": rc["track"], "laps": rc["nlaps"], "duration": int(dur), "players": []}
+                     "track": rc["track"], "variant": rc["variant"], "laps": rc["nlaps"], "duration": int(dur), "players": []}
                 rc["entry"] = e
                 def fix(rc):        # Plätze aus den Zielzeiten (spät eintreffende Meldungen werden nachgetragen)
                     order = sorted(rc["res"], key=lambda m: rc["res"][m])
@@ -307,7 +307,8 @@ def handle(c, t, d, rseq=0):
         now = time.time()
         if not r.race:
             r.race = {"start": now, "last": now, "macs": [], "res": {}, "laps": {},
-                      "track": r.sel[0] if r.sel else None, "nlaps": r.sel[1] if r.sel else None}
+                      "track": r.sel[0] if r.sel else None, "nlaps": r.sel[1] if r.sel else None,
+                      "variant": r.sel[2] if r.sel else None}
             if PORTF: PORTF.write(f"{now:.3f} r{r.id} RACE START\n")
             log(f"Raum {r.id}: Rennen startet auf STRECKE {r.sel[0] if r.sel else '?'}")
         r.race["last"] = now

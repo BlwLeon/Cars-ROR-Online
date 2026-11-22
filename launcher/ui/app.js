@@ -72,7 +72,15 @@ $("#btnPickRom").onclick = async () => {
 // ---------------- Spielen ----------------
 async function play(mode) {
   $("#btnHostPlay").disabled = $("#btnJoinPlay").disabled = true;
-  const r = await api.play(mode);
+  let r = await api.play(mode);
+  if (!r.ok && r.need_rom) {          // Original-ROM für den neuen Patch erneut auswählen, dann nochmal starten
+    toast(r.msg, true);
+    const p = await api.pick_rom();
+    if (p) {
+      const s = await api.setup_rom(p);
+      r = s.ok ? await api.play(mode) : s;
+    }
+  }
   if (!r.ok) { toast(r.msg, true); if (r.offline) refresh(); } else toast(t("play_started"));
   setTimeout(refresh, 1500);
 }
@@ -288,12 +296,14 @@ function fmtCs(cs) {
 }
 function trackName(h) {
   if (h.track == null) return "–";
-  const n = (TRACKS[h.track] || t("track_n", { n: h.track }));
+  let n = (TRACKS[h.track] || t("track_n", { n: h.track }));
+  if (h.variant != null && !NO_VARIANTS.has(h.track)) n += " " + (h.variant + 1);
   return h.laps ? `${n} · ${h.laps === 1 ? t("laps_1") : t("laps_n", { n: h.laps })}` : n;
 }
 // Strecken-Nummer aus der Lobby-Auswahl -> Ort. Die Varianten 1-3 einer Strecke haben dieselbe Nummer.
 const TRACKS = { 0: "Autovia", 1: "Tailfin Pass", 2: "Radiator Springs Speedway", 3: "Motoropolis",
                  4: "Ornament Valley", 5: "Santa Carburera", 6: "Radiator Springs", 9: "Mine Shaft" };
+const NO_VARIANTS = new Set([2, 9]);   // Speedway und Mine Shaft gibt es nur einmal
 function raceDetail(h) {
   const ps = [...(h.players || [])].sort((a, b) => (a.place || 99) - (b.place || 99));
   return `<table class="det"><tr><th>${t("th_place")}</th><th>${t("th_driver")}</th><th>${t("th_time")}</th><th>${t("th_best")}</th><th>${t("th_laps")}</th></tr>${ps.map(x => `
