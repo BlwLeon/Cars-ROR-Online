@@ -39,11 +39,19 @@ RESEND_MIN = 0.15  # Sekunden bis zur Wiederholung unbestätigter Nachrichten (m
 TIMEOUT = 8.0      # Sekunden ohne Lebenszeichen -> Spieler entfernt
 DGRAM_MAX = 640
 
-# Log-Datei pro Sitzung: wird bei jedem Serverstart gelöscht und neu angelegt (liegt neben server.py)
+# Log-Datei pro Sitzung (liegt neben server.py bzw. in --logdir)
 import os
 _HERE = ARGS.logdir or os.path.dirname(sys.executable if getattr(sys, "frozen", False) else os.path.abspath(__file__))
 os.makedirs(_HERE, exist_ok=True)
 LOGPATH = os.path.join(_HERE, "server_log.txt")
+# die letzten 5 Sitzungen aufheben (server_log.1.txt = vorige Sitzung ...), damit ein Problem nach einem
+# Neustart des Servers noch nachvollziehbar ist
+for _base in ("server_log", "server_portlog"):
+    for _i in range(5, 0, -1):
+        _src = os.path.join(_HERE, f"{_base}.txt" if _i == 1 else f"{_base}.{_i - 1}.txt")
+        try:
+            if os.path.exists(_src): os.replace(_src, os.path.join(_HERE, f"{_base}.{_i}.txt"))
+        except OSError: pass
 try: LOGF = open(LOGPATH, "w", encoding="utf-8", buffering=1)
 except OSError: LOGF = None
 # Spielnachrichten (Lobby, Namen, Ergebnisse) für die spätere Auswertung im Launcher-Verlauf

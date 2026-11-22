@@ -389,13 +389,33 @@ def _crash_logging():
             f.write(time.strftime("[%H:%M:%S] ") + f"Fehler im Thread {a.thread.name if a.thread else '?'}:\n")
             f.write("".join(traceback.format_exception(a.exc_type, a.exc_value, a.exc_traceback)))
         threading.excepthook = hook
+        import atexit
+        atexit.register(lambda: f.write(time.strftime("[%H:%M:%S] ") + "Prozess endet\n"))
+        # pywebview meldet Probleme mit WebView2 über sein Logging -> mitschreiben
+        import logging
+        h = logging.StreamHandler(f); h.setLevel(logging.WARNING)
+        h.setFormatter(logging.Formatter("[%(asctime)s] %(name)s %(levelname)s: %(message)s", "%H:%M:%S"))
+        logging.getLogger("pywebview").addHandler(h)
         return f
     except Exception:
         return None
 
 
+_CRASHLOG = None
+
+
+def _step(msg):
+    """Startschritte im crash_log mitschreiben - zeigt, in welcher Phase ein stiller Absturz passiert."""
+    if _CRASHLOG:
+        try:
+            _CRASHLOG.write(time.strftime("[%H:%M:%S] ") + msg + "\n")
+        except Exception:
+            pass
+
+
 def main():
-    log = _crash_logging()
+    global _CRASHLOG
+    log = _CRASHLOG = _crash_logging()
     try:
         _run()
         if log:
@@ -412,6 +432,12 @@ def _run():
     win = webview.create_window("Race-O-Rama Online", os.path.join(paths.UI_DIR, "index.html"), js_api=api,
                                 width=1100, height=700, min_size=(940, 600), background_color="#0E1014")
     api.window = win
+    _step("Fenster angelegt, starte WebView")
+    try:
+        win.events.loaded += lambda *a: _step("Oberfläche geladen")
+        win.events.closed += lambda *a: _step("Fenster geschlossen")
+    except Exception:
+        pass
     # Eigener WebView2-Datenordner je Installation: zwei Launcher gleichzeitig (z.B. zwei Testordner)
     # oder ein noch laufender WebView2-Rest der letzten Sitzung blockieren sich so nicht gegenseitig.
     store = os.path.join(paths.USER_DIR, "webview")
