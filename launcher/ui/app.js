@@ -22,8 +22,11 @@ $$("#setTabs button").forEach(b => b.onclick = () => {
 });
 
 // ---------------- Zustand ----------------
+let refreshing = false;
 async function refresh() {
-  ST = await api.state();
+  if (refreshing) return;          // nicht stapeln, wenn ein langer Aufruf (Suche, Tastenaufnahme) läuft
+  refreshing = true;
+  try { ST = await api.state(); } finally { refreshing = false; }
   $("#ver").textContent = t("version") + " " + ST.version;
   $("#aboutVer").textContent = t("version") + " " + ST.version;
   if (ST.lang && ST.lang !== LANG) applyLang(ST.lang);
@@ -324,8 +327,19 @@ function langUi() {
   $("#langSel").innerHTML = Object.entries(LANGS).map(([k, n]) => `<option value="${k}">${n}</option>`).join("");
   $("#langSel").onchange = () => setLang($("#langSel").value);
 }
+// Alle Aufrufe an Python nacheinander statt gleichzeitig. Unter Windows (pywebview/.NET) kann sich das Fenster
+// sonst gegenseitig blockieren, wenn ein Ergebnis zurückkommt, während schon der nächste Aufruf startet
+// ("Programm reagiert nicht" beim Start, wenn viele Aufrufe auf einmal laufen).
+function serialApi(raw) {
+  let chain = Promise.resolve();
+  return new Proxy({}, { get: (_, name) => (...args) => {
+    const p = chain.then(() => raw[name](...args));
+    chain = p.catch(() => {});
+    return p;
+  } });
+}
 async function boot() {
-  api = location.hash.includes("mock") ? MOCK : window.pywebview.api;
+  api = location.hash.includes("mock") ? MOCK : serialApi(window.pywebview.api);
   langUi();
   const st = await api.state(); applyLang(st.lang || "en"); $("#langSel").value = LANG;
   await refresh(); loadDriver();

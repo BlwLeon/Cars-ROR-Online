@@ -96,6 +96,9 @@ class Api:
 
     # ---------- allgemein ----------
     def state(self):
+        if not _UI_SEEN[0]:
+            _step("Oberfläche geladen")
+        _UI_SEEN[0] = time.time()
         s = self.s
         crash = melon.crashed()
         if crash is not None:
@@ -408,6 +411,34 @@ def _crash_logging():
 _CRASHLOG = None
 
 
+_UI_SEEN = [0.0]
+
+
+def _ui_watchdog():
+    """Meldet sich die Oberfläche nicht (kein state()-Aufruf), alle Python-Threads ins crash_log schreiben.
+    So sehen wir beim nächsten Hänger, woran es liegt."""
+    import faulthandler
+    t0 = time.time()
+
+    def run():
+        dumped = False
+        while True:
+            time.sleep(2)
+            last = _UI_SEEN[0]
+            stale = (time.time() - t0 > 20) if not last else (time.time() - last > 25)
+            if stale and not dumped and _CRASHLOG:
+                dumped = True
+                _step("WARNUNG: Oberfläche reagiert nicht - Stand aller Threads:")
+                try:
+                    faulthandler.dump_traceback(file=_CRASHLOG, all_threads=True)
+                except Exception:
+                    pass
+            elif not stale and dumped:
+                dumped = False
+                _step("Oberfläche reagiert wieder")
+    threading.Thread(target=run, daemon=True, name="ui-watchdog").start()
+
+
 def _step(msg):
     """Startschritte im crash_log mitschreiben - zeigt, in welcher Phase ein stiller Absturz passiert."""
     if _CRASHLOG:
@@ -437,17 +468,18 @@ def _run():
                                 width=1100, height=700, min_size=(940, 600), background_color="#0E1014")
     api.window = win
     _step("Fenster angelegt, starte WebView")
-    try:
-        win.events.loaded += lambda *a: _step("Oberfläche geladen")
-        win.events.closed += lambda *a: _step("Fenster geschlossen")
-    except Exception:
-        pass
+    # bewusst keine Fenster-Ereignisse (events.loaded/closed): die laufen im Fenster-Thread und können sich
+    # unter Windows mit gleichzeitigen API-Aufrufen gegenseitig blockieren. "Oberfläche geladen" meldet state().
     # Eigener WebView2-Datenordner je Installation: zwei Launcher gleichzeitig (z.B. zwei Testordner)
     # oder ein noch laufender WebView2-Rest der letzten Sitzung blockieren sich so nicht gegenseitig.
     store = os.path.join(paths.USER_DIR, "webview")
+    # private_mode=False: WebView2-Profil wiederverwenden. Im privaten Modus legt WebView2 bei JEDEM Start ein
+    # frisches Profil an (inkl. Komponenten-Downloads/Virenscan der neuen Dateien) - genau dabei hing der
+    # Launcher laut Windows-Ereignisanzeige gelegentlich 20-35 s ("reagiert nicht").
+    _ui_watchdog()
     try:
-        webview.start(debug="--debug" in sys.argv, storage_path=store)
-    except TypeError:          # ältere pywebview-Version ohne storage_path
+        webview.start(debug="--debug" in sys.argv, storage_path=store, private_mode=False)
+    except TypeError:          # ältere pywebview-Version ohne storage_path/private_mode
         webview.start(debug="--debug" in sys.argv)
 
 
