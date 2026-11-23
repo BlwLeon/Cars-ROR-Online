@@ -19,9 +19,10 @@ ap.add_argument("--lag", type=float, default=0, help="zusätzlicher Ping in ms (
 ap.add_argument("--jitter", type=float, default=0, help="zufällige Schwankung in ms je Paket")
 ap.add_argument("--loss", type=float, default=0, help="Paketverlust in Prozent je Richtung")
 ap.add_argument("--logdir", default=None, help="Ordner für server_log.txt / server_portlog.txt")
+ap.add_argument("--spike", type=float, default=0, help="WLAN-Aussetzer: so viele pro Minute und Spieler (je 0,2-1,5 s alles verzögert)")
 ARGS = ap.parse_args()
 PORT = ARGS.port
-SIM = ARGS.lag > 0 or ARGS.jitter > 0 or ARGS.loss > 0
+SIM = ARGS.lag > 0 or ARGS.jitter > 0 or ARGS.loss > 0 or ARGS.spike > 0
 PROTO_VER = 2
 MOD_VER = "R13"                        # Stand der Mod (ROM-Patch + Server)
 SERVER_NAME = (ARGS.name or socket.gethostname())[:32]
@@ -125,13 +126,22 @@ sock.bind(("0.0.0.0", PORT))
 # ---- Netzwerk-Simulator (Verzögerung / Schwankung / Verlust) ----
 sim_q = []      # (zeit, nr, richtung, daten, adresse)
 sim_n = 0
-def sim_delay():
-    return (ARGS.lag / 2 + random.uniform(0, ARGS.jitter)) / 1000.0
+spike_until = {}   # Adresse -> Ende des aktuellen Aussetzers
+spike_next = {}
+def sim_delay(addr=None):
+    d = (ARGS.lag / 2 + random.uniform(0, ARGS.jitter)) / 1000.0
+    if ARGS.spike > 0 and addr is not None and addr[0] == "127.0.0.1":
+        now = time.time()
+        if now >= spike_next.setdefault(addr, now + random.expovariate(ARGS.spike / 60.0)):
+            spike_until[addr] = now + random.uniform(0.2, 1.5)
+            spike_next[addr] = spike_until[addr] + random.expovariate(ARGS.spike / 60.0)
+        if now < spike_until.get(addr, 0): d += spike_until[addr] - now   # alles hängt, kommt danach gebündelt
+    return d
 def send_dgram(data, addr):
     global sim_n
     if not SIM: sock.sendto(data, addr); return
     if random.random() * 100 < ARGS.loss: return
-    sim_n += 1; heapq.heappush(sim_q, (time.time() + sim_delay(), sim_n, 'out', bytes(data), addr))
+    sim_n += 1; heapq.heappush(sim_q, (time.time() + sim_delay(addr), sim_n, 'out', bytes(data), addr))
 def info_reply(addr):
     info = {"game": "Cars Race-O-Rama Online", "mod": MOD_VER, "proto": PROTO_VER, "name": SERVER_NAME,
             "port": PORT, "sid": SERVER_SID, "players": len(clients),
@@ -236,7 +246,7 @@ def recv_dgram(data, addr):
     if data[:len(HIST_REQ)] == HIST_REQ: hist_reply(data, addr); return
     if not SIM: on_datagram(data, addr); return
     if random.random() * 100 < ARGS.loss: return
-    sim_n += 1; heapq.heappush(sim_q, (time.time() + sim_delay(), sim_n, 'in', bytes(data), addr))
+    sim_n += 1; heapq.heappush(sim_q, (time.time() + sim_delay(addr), sim_n, 'in', bytes(data), addr))
 def sim_run():
     now = time.time()
     while sim_q and sim_q[0][0] <= now:
@@ -458,7 +468,8 @@ try:
     else: log("Tailscale nicht gefunden/nicht angemeldet - nur lokale Spieler bzw. Portfreigabe möglich")
 except Exception:
     log("Tailscale-Abfrage fehlgeschlagen")
-if SIM: log(f"SIMULATION aktiv: +{ARGS.lag:.0f} ms Ping, +-{ARGS.jitter:.0f} ms Schwankung, {ARGS.loss:.1f} % Verlust je Richtung")
+if SIM: log(f"SIMULATION aktiv: +{ARGS.lag:.0f} ms Ping, +-{ARGS.jitter:.0f} ms Schwankung, {ARGS.loss:.1f} % Verlust je Richtung"
+            + (f", {ARGS.spike:.0f} WLAN-Aussetzer/min je Spieler" if ARGS.spike else ""))
 last_status = time.time()
 while True:
     r, _, _ = select.select([sock], [], [], 0.002)
