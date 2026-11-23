@@ -23,7 +23,7 @@ ARGS = ap.parse_args()
 PORT = ARGS.port
 SIM = ARGS.lag > 0 or ARGS.jitter > 0 or ARGS.loss > 0
 PROTO_VER = 2
-MOD_VER = "R12"                        # Stand der Mod (ROM-Patch + Server)
+MOD_VER = "R13"                        # Stand der Mod (ROM-Patch + Server)
 SERVER_NAME = (ARGS.name or socket.gethostname())[:32]
 SERVER_SID = "%08x" % random.getrandbits(32)        # erkennt denselben Server unter mehreren Adressen
 INFO_REQ, INFO_RES = b"CRRO-INFO?", b"CRRO-INFO!"   # "Fußabdruck" für Server-Suche / Launcher
@@ -93,6 +93,7 @@ class Client:
         self.tx_seq, self.rx_expect = 1, 1
         self.unacked = {}          # seq -> [type, data, last_sent, sacked]
         self.ack_progress = time.time()   # letzter Fortschritt bei den Bestätigungen (Wächter gegen Hänger)
+        self.diag = None; self.rtt_ms = None
         self.unrel = []            # (type, data, seq)
         self.ooo = {}              # zu früh angekommene zuverlässige Nachrichten: seq -> (type, data)
         self.rtt = 0.0
@@ -155,8 +156,28 @@ def learn_result(r, payload):
     if m.mac not in rc["res"]:
         v = [struct.unpack_from('<I', p, o)[0] for o in range(2, len(p) - 3, 4)]   # Gesamt, beste Runde, Runden...
         rc["res"][m.mac] = v[0]
+        rc.setdefault("arr", {})[m.mac] = time.time()
         rc["laps"][m.mac] = {"best_cs": v[1] if len(v) > 1 else None, "laps_cs": [x for x in v[2:] if x]}
         if rc is r.last_race: rc["entry_fix"](rc)
+def _places(rc):
+    """Ziel/Ausgezählt bestimmen. Das Spiel beendet das Rennen ~10 s nach dem ERSTEN Fahrer im Ziel und schickt
+    dann für alle anderen eine Ersatzzeit - die kann zufällig sein (bei 1-Runden-Strecken sogar KLEINER als die
+    des Siegers). Gültig ist daher nur, wer innerhalb des Zeitfensters zwischen erster und letzter Zielmeldung
+    ins Ziel kam: Siegerzeit <= Zeit <= Siegerzeit + Fenster. Alle anderen: ausgezählt (DNF), hinter den Fahrern im Ziel."""
+    res, arr = rc["res"], rc.get("arr", {})
+    out = {}
+    if res:
+        first = min(arr, key=arr.get) if arr else min(res, key=res.get)
+        win_t = res[first]
+        window = (max(arr.values()) - arr[first]) if arr else 0
+        fin = {m: t for m, t in res.items() if m == first or (win_t <= t <= win_t + (window + 1.0) * 100)}
+        # Ausgezählte nach der Ersatzzeit des Spiels ordnen (vermutlich hochgerechnet); unsinnige (< Sieger) ans Ende
+        order = sorted(fin, key=fin.get) + sorted((m for m in res if m not in fin), key=lambda m: (res[m] < win_t, res[m]))
+        for i, m in enumerate(order):
+            out[m] = {"place": i + 1, "time_cs": res[m] if m in fin else None, "dnf": m not in fin}
+    for m in rc["macs"]:
+        if m not in out: out[m] = {"place": None, "time_cs": None, "dnf": True}
+    return out
 def learn_selection(r, payload):
     """Port 13, Typ 0x04 vom Host: [04][09][Strecke][Variante][Runden]... (vor jedem Rennen)."""
     p = bytes(payload)
@@ -181,14 +202,7 @@ def race_tick(now):
                      "track": rc["track"], "variant": rc["variant"], "laps": rc["nlaps"], "duration": int(dur), "players": []}
                 rc["entry"] = e
                 def fix(rc):        # Plätze aus den Zielzeiten (spät eintreffende Meldungen werden nachgetragen)
-                    order = sorted(rc["res"], key=lambda m: rc["res"][m])
-                    best = min(rc["res"].values()) if rc["res"] else 0
-                    rc["entry"]["players"] = [dict({"mac": mac(m), "place": (order.index(m) + 1) if m in rc["res"] else None,
-                                               "time_cs": rc["res"].get(m),
-                                               # Letzter wird vom Spiel ausgezählt, sobald alle anderen im Ziel sind
-                                               # -> unsinnig hohe Zeit statt echter Zielzeit
-                                               "dnf": m not in rc["res"] or (len(rc["res"]) > 1 and rc["res"][m] > 2.5 * best)},
-                                              **rc["laps"].get(m, {})) for m in rc["macs"]]
+                    rc["entry"]["players"] = [dict(p, mac=mac(m), **rc["laps"].get(m, {})) for m, p in _places(rc).items()]
                 rc["entry_fix"] = fix; fix(rc)
                 r.last_race = rc
                 races.append(e); del races[:-500]
@@ -254,7 +268,12 @@ def leave_room(c, why=""):
 def handle(c, t, d, rseq=0):
     global next_rid
     if t == M_PING:
-        if len(d) >= 5: c.rtt = d[4] / 60.0
+        if len(d) >= 5: c.rtt = d[4] / 60.0      # in Spiel-Frames/60 (so erwartet der Client den Wert zurück)
+        if len(d) >= 16:   # Zustand des Clients (ab R13): D, Warte-Frames, Uhr-Halte, Takt, D-Wachstum
+            ratio = max(d[14], 1) * 4          # Zähler-Takte je Spiel-Frame x256
+            c.diag = {"D": d[5], "wait": struct.unpack_from('<I', d, 6)[0], "hold": struct.unpack_from('<I', d, 10)[0],
+                      "fps": round(60 * 256 / ratio), "grow": d[15]}
+            c.rtt_ms = d[4] * 1000.0 * ratio / (60 * 256)
         c.send_unrel(M_PONG, d)
     elif t in (M_HOST_OPEN, M_HOST_UPDATE):
         if t == M_HOST_OPEN or not c.room or c.aid != 0:
@@ -473,4 +492,6 @@ while True:
     if now - last_status > 30 and rooms:
         last_status = now
         for r in rooms.values():
-            log(f"Raum {r.id}: " + ", ".join(f"aid{a}={m.name()} Ping {m.rtt * 1000:.0f} ms DS {m.stats['ds_in']} Port {m.stats['port_in']}" + (f" offen {len(m.unacked)}/{now - m.ack_progress:.0f}s" if m.unacked else "") for a, m in r.members.items()))
+            log(f"Raum {r.id}: " + ", ".join(f"aid{a}={m.name()} Ping {(m.rtt_ms if m.rtt_ms is not None else m.rtt * 1000):.0f} ms DS {m.stats['ds_in']} Port {m.stats['port_in']}"
+                + (f" offen {len(m.unacked)}/{now - m.ack_progress:.0f}s" if m.unacked else "")
+                + (f" [D {m.diag['D']} wart {m.diag['wait']} halt {m.diag['hold']} {m.diag['fps']}fps +D{m.diag['grow']}]" if m.diag else "") for a, m in r.members.items()))

@@ -63,12 +63,13 @@ static int unrel_add_seq(u8 type, const u8 *data, u32 len, u16 seq);
 #define CLK_PORT 15
 #define CLK_DEAD 3        // Toleranz in Zähler-Takten
 #define CLK_EXTRA 8       // so viele Takte wird der Stand eines Mitspielers ohne neue Nachricht hochgerechnet
-#define CLK_MAXHOLD 300   // höchstens 5 s am Stück anhalten (Mitspieler hängt endgültig -> aufgeben)
+#define CLK_MAXHOLD 120   // höchstens 2 s am Stück anhalten (Mitspieler hängt endgültig -> aufgeben)
+#define CLK_DS_WINDOW 600 // im Rennen nur in den ersten ~10 s (Countdown/Start) anhalten, danach nie
 static u32 clk_c[4], clk_t[4]; static u8 clk_ok[4], clk_synced; static u32 clk_run, clk_tick; static u8 clk_gaveup;
 // Zeitbasis der Netz-Uhr: Takte des Zählers (clk_now). Ping (last_rtt) wird in Spiel-Frames gemessen; im Rennen
 // läuft das Spiel mit 30 fps, der Zähler aber mit 60/s -> Laufzeit mit clk_ratio umrechnen. Ohne das wurde die
 // Laufzeit halbiert und jede Konsole hielt sich für "voraus" (alle hielten ständig an, Start nicht framegenau).
-static u32 clk_now, clk_ratio = 256, clk_rn, clk_rf, clk_rt;
+static u32 clk_now, clk_ratio = 256, clk_rn, clk_rf, clk_rt, clk_ds_t0;
 static u32 to_ticks(u32 frames) { return (frames * clk_ratio + 128) >> 8; }
 static void clk_reset(void) { for (int i = 0; i < 4; i++) clk_ok[i] = 0; clk_synced = 0; clk_run = 0; clk_gaveup = 0; }
 static int unrel_add_seq(u8 type, const u8 *data, u32 len, u16 seq) {
@@ -470,7 +471,13 @@ void vwm_tick(void) {
         if (!g_v.welcomed && (hello_due++ % 30) == 0) {
             u8 h[10]; mcpy(h, my_mac, 6); h[6] = PROTO_VER; h[7] = 0; wr16(h + 8, session_nonce); unrel_add(M_HELLO, h, 10);
         }
-        if (g_v.welcomed && (now % 15) == 0) { u8 p[5]; wr32(p, now); p[4] = (u8)(g_v.last_rtt > 255 ? 255 : g_v.last_rtt); unrel_add(M_PING, p, 5); }
+        if (g_v.welcomed && (now % 15) == 0) {
+            // Ping + Zustand für das Server-Log: [u32 Zeit][rtt][D][u32 Warte-Frames][u32 Uhr-Halte][Takt/4][D-Wachstum]
+            u8 p[16]; wr32(p, now); p[4] = (u8)(g_v.last_rtt > 255 ? 255 : g_v.last_rtt);
+            p[5] = (u8)ds_D; wr32(p + 6, g_v.ds_wait); wr32(p + 10, g_v.clk_hold);
+            p[14] = (u8)(clk_ratio >> 2 > 255 ? 255 : clk_ratio >> 2); p[15] = (u8)g_v.ds_grow;
+            unrel_add(M_PING, p, 16);
+        }
     }
     // ausstehendes WM_Initialize beantworten
     if (init_cb) {
@@ -631,7 +638,7 @@ s32 vwm_hook_020A0E40(WMCallback cb, const u8 *bss, const u8 *ssid, s32 ps, s32 
 static u32 popc(u32 x) { u32 c = 0; while (x) { c += x & 1; x >>= 1; } return c; }
 s32 vwm_call_0202DE7C(u8 *info, u16 port, u16 bitmap, u16 datalen, s32 dbl) {      // WM_StartDataSharing
     (void)port; (void)dbl;
-    ds_active = 1; ds_len = datalen > 40 ? 40 : datalen; ds_bm = bitmap; ds_have = 0; ds_seq = 0; ds_waitcnt = 0; ds_hold = 0;
+    ds_active = 1; clk_ds_t0 = clk_now; ds_len = datalen > 40 ? 40 : datalen; ds_bm = bitmap; ds_have = 0; ds_seq = 0; ds_waitcnt = 0; ds_hold = 0;
     mset(ds_hok, 0, sizeof ds_hok);
     for (int i = 0; i < 4; i++) { ds_peer_seq[i] = 0; ds_peer_rtt[i] = 0; ds_off[i] = 0; ds_skip[i] = 0; }
     for (u32 a = 0; a < 4; a++) {
@@ -760,10 +767,13 @@ void vwm_call_0202ED54(u8 *mgr) {
             if (d > ahead) ahead = d;
         }
         g_v.clk_ahead = (u32)ahead;
-        if (ahead > CLK_DEAD && !clk_gaveup) {
+        // Im laufenden Rennen (Datenaustausch aktiv, nach der Startphase) die Uhr nie anhalten: dort hält ohnehin
+        // der Lockstep alle zusammen, und ein angehaltener Zähler stört das Spiel (versetzte Positionen).
+        int may_hold = !ds_active || clk_now - clk_ds_t0 < CLK_DS_WINDOW;
+        if (ahead > CLK_DEAD && !clk_gaveup && may_hold) {
             if (++clk_run <= CLK_MAXHOLD) { (*ctr)--; g_v.clk_hold++; }
             else { clk_gaveup = 1; g_v.clk_giveup++; }
-        } else if (ahead <= CLK_DEAD) { clk_run = 0; clk_gaveup = 0; }
+        } else if (ahead <= CLK_DEAD || !may_hold) { clk_run = 0; clk_gaveup = 0; }
     }
     G_MGR_TICK(mgr);
 }

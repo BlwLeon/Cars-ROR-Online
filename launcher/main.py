@@ -43,14 +43,17 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from core import paths, settings, rom, melon, servers, save, history, pad, i18n  # noqa: E402
 from core.i18n import T  # noqa: E402
 
-VERSION = "1.0.0-beta3"
+VERSION = "1.0.0-beta4"
 
 
 class Api:
     def __init__(self):
         self.s = settings.load()
         i18n.set_lang(self.s["lang"] or "en")
-        self.window = None
+        # mit Unterstrich: pywebview reicht öffentliche Attribute an JavaScript weiter und durchsucht sie dabei
+        # rekursiv - beim Fenster-Objekt landet es in den .NET/WebView2-Innereien (falscher Thread, Endlos-
+        # Rekursion; laut crash_log genau beim Start). Das war vermutlich der Start-Hänger.
+        self._window = None
         self.srv_info = None          # letzter Stand des ausgewählten Servers (None = nicht erreichbar)
         def _plog(m):
             with open(os.path.join(paths.USER_DIR, "launcher_log.txt"), "a", encoding="utf-8") as f:
@@ -137,10 +140,10 @@ class Api:
         import webview
         kind = getattr(getattr(webview, "FileDialog", None), "OPEN", None) or webview.OPEN_DIALOG
         try:
-            r = self.window.create_file_dialog(kind, allow_multiple=False,
+            r = self._window.create_file_dialog(kind, allow_multiple=False,
                                                file_types=("Nintendo DS ROM (*.nds)", "All files (*.*)"))
         except ValueError:          # ältere/neuere pywebview-Versionen mit anderer Filter-Prüfung
-            r = self.window.create_file_dialog(kind, allow_multiple=False)
+            r = self._window.create_file_dialog(kind, allow_multiple=False)
         if not r:
             return None
         return r if isinstance(r, str) else r[0]
@@ -425,7 +428,10 @@ def _ui_watchdog():
         while True:
             time.sleep(2)
             last = _UI_SEEN[0]
-            stale = (time.time() - t0 > 20) if not last else (time.time() - last > 25)
+            if last:      # nur den Start überwachen: im Hintergrund drosselt WebView2 die Timer (sonst Fehlalarm)
+                if dumped: _step("Oberfläche reagiert wieder")
+                return
+            stale = time.time() - t0 > 20
             if stale and not dumped and _CRASHLOG:
                 dumped = True
                 _step("WARNUNG: Oberfläche reagiert nicht - Stand aller Threads:")
@@ -466,7 +472,7 @@ def _run():
     api = Api()
     win = webview.create_window("Race-O-Rama Online", os.path.join(paths.UI_DIR, "index.html"), js_api=api,
                                 width=1100, height=700, min_size=(940, 600), background_color="#0E1014")
-    api.window = win
+    api._window = win
     _step("Fenster angelegt, starte WebView")
     # bewusst keine Fenster-Ereignisse (events.loaded/closed): die laufen im Fenster-Thread und können sich
     # unter Windows mit gleichzeitigen API-Aufrufen gegenseitig blockieren. "Oberfläche geladen" meldet state().
