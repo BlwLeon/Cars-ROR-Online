@@ -29,6 +29,7 @@ struct vdbg {
     u32 clk_hold, clk_giveup, clk_ahead;   // Netz-Uhr: angehaltene Frames, Abbrüche, letzter Vorsprung
     u32 unrel_drop, rel_defer, pu_drop;     // verworfene unzuverl. Records, aufgeschobene zuverl. Port-Nachrichten
     u32 clk_ratio;                          // Zähler-Takte je Spiel-Frame x256 (Rennen: Spiel 30 fps, Zähler 60/s)
+    u32 ds_shrink;                          // wie oft D wieder verkleinert wurde
 };
 __attribute__((section(".dbg2"), used)) struct vdbg g_v = { {'C','R','N','E','T','V','W','M'}, 1 };
 
@@ -69,6 +70,7 @@ static u32 clk_c[4], clk_t[4]; static u8 clk_ok[4], clk_synced; static u32 clk_r
 // Zeitbasis der Netz-Uhr: Takte des Zählers (clk_now). Ping (last_rtt) wird in Spiel-Frames gemessen; im Rennen
 // läuft das Spiel mit 30 fps, der Zähler aber mit 60/s -> Laufzeit mit clk_ratio umrechnen. Ohne das wurde die
 // Laufzeit halbiert und jede Konsole hielt sich für "voraus" (alle hielten ständig an, Start nicht framegenau).
+static u32 rtt_s16;
 static u32 clk_now, clk_ratio = 256, clk_rn, clk_rf, clk_rt;
 static u32 to_ticks(u32 frames) { return (frames * clk_ratio + 128) >> 8; }
 static void clk_reset(void) { for (int i = 0; i < 4; i++) clk_ok[i] = 0; clk_synced = 0; clk_run = 0; clk_gaveup = 0; }
@@ -183,14 +185,17 @@ static struct portrx prx[PR_N]; static u32 prx_w, prx_r;
 // Data Sharing
 // Symmetrischer, verzögerter Lockstep: In Schritt N sehen ALLE Konsolen die Blöcke aller Spieler
 // aus Schritt N - D (auch den eigenen). D = höchster Ping in der Runde + 3 Frames.
-#define DSH 64            // Verlauf in Schritten (Potenz von 2)
+#define DSH 128           // Verlauf in Schritten (Potenz von 2). Muss > 2*D_MAX sein: Mitspieler können bis zu D
+                          // Schritte voraus sein und ich brauche Daten von vor D Schritten (64 war bei D=40 zu klein:
+                          // Blöcke wurden überschrieben, bevor sie gebraucht wurden -> fast nur noch Warten).
+#define DS_DMAX 24        // höchste Verzögerung (24 Schritte = 0,8 s bei 30 fps)
 #define DS_REDUN 4
 #define DS_REPAIR 8   // Nachlieferung: bis zu 8 ältere Blöcke, die der langsamste Mitspieler noch braucht        // Blöcke pro Paket (Redundanz gegen Paketverlust)
 static u8 ds_active; static u16 ds_len, ds_bm, ds_seq, ds_D;
 static u8 ds_hist[4][DSH][40]; static u16 ds_hseq[4][DSH]; static u8 ds_hok[4][DSH];
 static u8 ds_last[4][40]; static u8 ds_have;      // neuester Block je Spieler (für übersprungene Spieler)
 static u16 ds_peer_seq[4]; static u8 ds_peer_rtt[4]; static s16 ds_off[4]; static u8 ds_skip[4]; static u32 ds_waitcnt;
-static u32 ds_hold; static u16 ds_miss, ds_win;   // Host nach Start-Nachricht kurz anhalten (Laufzeit zum Client ausgleichen)
+static u32 ds_hold, ds_calm; static u16 ds_miss, ds_win;   // Host nach Start-Nachricht kurz anhalten (Laufzeit zum Client ausgleichen)
 static void ds_store(u32 aid, u16 s, const u8 *blk) {
     u32 i = s & (DSH - 1); mcpy(ds_hist[aid][i], blk, ds_len); ds_hseq[aid][i] = s; ds_hok[aid][i] = 1;
 }
@@ -274,7 +279,16 @@ static void handle(u8 type, const u8 *d, u32 len, u16 rseq) {
         if (len >= 2) { g_v.my_id = rd16(d); g_v.welcomed = 1; last_rx = net_frame(); }
         break;
     case M_PONG:
-        if (len >= 4) { u32 r = net_frame() - rd32(d); if (r < 600) g_v.last_rtt = r; }
+        if (len >= 4) {
+            // Ping geglättet (x16) und Ausreißer gekappt: Ein WLAN-Aussetzer (1 s ohne Antwort) ließ sonst D sofort auf
+            // ~40 springen (nie wieder kleiner) -> 4-5 s versetzte Positionen.
+            u32 r = net_frame() - rd32(d);
+            if (r < 600) {
+                if (!rtt_s16) rtt_s16 = r << 4;
+                else { u32 cap = (rtt_s16 >> 4) + 6; if (r > cap) r = cap; rtt_s16 = rtt_s16 - (rtt_s16 >> 3) + (r << 1); }
+                g_v.last_rtt = (rtt_s16 + 8) >> 4;
+            }
+        }
         break;
     case M_LIST: {
         u32 n = len ? d[0] : 0, o = 1; rooms_n = 0;
@@ -650,7 +664,7 @@ s32 vwm_call_0202DE7C(u8 *info, u16 port, u16 bitmap, u16 datalen, s32 dbl) {   
     }
     ds_pre_clear();
     ds_miss = 0; ds_win = 0;
-    ds_D = (u16)(g_v.last_rtt + 1); if (ds_D < 3) ds_D = 3; if (ds_D > 40) ds_D = 40;
+    ds_D = (u16)(g_v.last_rtt + 1); if (ds_D < 3) ds_D = 3; if (ds_D > DS_DMAX) ds_D = DS_DMAX; ds_calm = 0;
     *(u16 *)(info + 0x810) = datalen;
     g_v.ds_len = ds_len; g_v.ds_bm = ds_bm;
     return 0;
@@ -696,7 +710,7 @@ s32 vwm_call_0202E230(u8 *info, const u8 *send, u8 *set) {                      
     // Wächst nur. Kommen Daten wiederholt knapp zu spät (kurze Wartephasen), wächst D um 1.
     u32 mx = g_v.last_rtt;
     for (u32 aid = 0; aid < 4; aid++) if ((g_v.conn_bm & (1u << aid)) && aid != me && ds_peer_rtt[aid] > mx) mx = ds_peer_rtt[aid];
-    if (mx + 1 > ds_D) ds_D = (u16)(mx + 1 > 40 ? 40 : mx + 1);
+    if (mx + 1 > ds_D) ds_D = (u16)(mx + 1 > DS_DMAX ? DS_DMAX : mx + 1);
     g_v.ds_D = ds_D;
     // Datensatz für Schritt t = N - D bauen
     s32 t = (s32)ds_seq - ds_D;
@@ -728,8 +742,15 @@ s32 vwm_call_0202E230(u8 *info, const u8 *send, u8 *set) {                      
     dc_store(set, 4 + 4 * ds_len);
     if (ds_seq >= 120) {      // Startphase (Einpendeln) nicht bewerten
         if (ds_waitcnt > 0 && ds_waitcnt <= 8) ds_miss++;   // kurz gewartet = D knapp; lange Wartephase = Pause/Hänger, ignorieren
-        if (ds_miss >= 3) { if (ds_D < 40) { ds_D++; g_v.ds_grow++; } ds_miss = 0; ds_win = 0; }
+        if (ds_miss >= 3) { if (ds_D < DS_DMAX) { ds_D++; g_v.ds_grow++; } ds_miss = 0; ds_win = 0; }
         else if (++ds_win >= 120) { ds_win = 0; ds_miss = 0; }
+    }
+    // D wieder verkleinern, wenn es lange ruhig war (20 s ohne Warten) und D über dem Bedarf liegt.
+    // Kostet einen übersprungenen Schritt der Mitspieler-Daten (wie ein verlorenes Paket), dafür weniger Versatz.
+    if (ds_waitcnt) ds_calm = 0;
+    else if (++ds_calm >= 600) {
+        ds_calm = 0;
+        if (ds_D > mx + 2 && ds_D > 3) { ds_D--; g_v.ds_shrink++; }
     }
     ds_waitcnt = 0; ds_seq++; g_v.ds_ok++;
     return 0;

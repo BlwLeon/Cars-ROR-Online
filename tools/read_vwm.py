@@ -24,8 +24,8 @@ if i >= 0:
         print("VWM:" if k == 0 else "    ", "  ".join(f"{n}={x}" for n, x in zip(names[k:k+7], v[k:k+7])))
     print("     ds_len=%d ds_bm=%#x ds_wait=%d ds_rebase=%d lost=%d net_restart=%d ds_D=%d start_hold=%d sync_fix=%d ds_pre=%d ds_grow=%d repair=%d repaired=%d" % struct.unpack_from("<HHIIIIIIIIIII", d, i + 8 + 4 * len(names)))
     o2 = i + 8 + 4 * len(names) + struct.calcsize("<HHIIIIIIIIIII")
-    if o2 + 36 <= len(d):
-        print("     clk_hold=%d clk_giveup=%d clk_ahead=%d unrel_drop=%d rel_defer=%d pu_drop=%d clk_ratio=%d" % struct.unpack_from("<IIiIIII", d, o2))
+    if o2 + 32 <= len(d):
+        print("     clk_hold=%d clk_giveup=%d clk_ahead=%d unrel_drop=%d rel_defer=%d pu_drop=%d clk_ratio=%d ds_shrink=%d" % struct.unpack_from("<IIiIIIII", d, o2))
 i = d.find(b'CRQOLDBG')
 if i >= 0:
     step, presses, hidden, last = struct.unpack_from('<4I', d, i + 8)
