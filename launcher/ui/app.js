@@ -254,6 +254,7 @@ function gfxUi() {
   $("#gScale").disabled = !gl;
   $("#gScaleTxt").textContent = gl ? `${sc}× (${256 * sc}×${192 * sc})` : "1× (256×192)";
   $("#gScaleHint").style.display = gl ? "none" : "";
+  $("#gGlWarn").style.display = gl ? "" : "none";
 }
 ["#gLayout", "#gSizing", "#gSwap", "#gInt", "#gFilter", "#gRend", "#gScale", "#gFull"].forEach(id => $(id).onchange = async () => {
   gfxUi();
