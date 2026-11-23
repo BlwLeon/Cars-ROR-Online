@@ -64,12 +64,12 @@ static int unrel_add_seq(u8 type, const u8 *data, u32 len, u16 seq);
 #define CLK_DEAD 3        // Toleranz in Zähler-Takten
 #define CLK_EXTRA 8       // so viele Takte wird der Stand eines Mitspielers ohne neue Nachricht hochgerechnet
 #define CLK_MAXHOLD 120   // höchstens 2 s am Stück anhalten (Mitspieler hängt endgültig -> aufgeben)
-#define CLK_DS_WINDOW 600 // im Rennen nur in den ersten ~10 s (Countdown/Start) anhalten, danach nie
+#define CLK_DS_STEPS 300  // im Rennen nur in den ersten 300 Schritten (~10 s, Countdown/Start) anhalten, danach nie
 static u32 clk_c[4], clk_t[4]; static u8 clk_ok[4], clk_synced; static u32 clk_run, clk_tick; static u8 clk_gaveup;
 // Zeitbasis der Netz-Uhr: Takte des Zählers (clk_now). Ping (last_rtt) wird in Spiel-Frames gemessen; im Rennen
 // läuft das Spiel mit 30 fps, der Zähler aber mit 60/s -> Laufzeit mit clk_ratio umrechnen. Ohne das wurde die
 // Laufzeit halbiert und jede Konsole hielt sich für "voraus" (alle hielten ständig an, Start nicht framegenau).
-static u32 clk_now, clk_ratio = 256, clk_rn, clk_rf, clk_rt, clk_ds_t0;
+static u32 clk_now, clk_ratio = 256, clk_rn, clk_rf, clk_rt;
 static u32 to_ticks(u32 frames) { return (frames * clk_ratio + 128) >> 8; }
 static void clk_reset(void) { for (int i = 0; i < 4; i++) clk_ok[i] = 0; clk_synced = 0; clk_run = 0; clk_gaveup = 0; }
 static int unrel_add_seq(u8 type, const u8 *data, u32 len, u16 seq) {
@@ -638,7 +638,7 @@ s32 vwm_hook_020A0E40(WMCallback cb, const u8 *bss, const u8 *ssid, s32 ps, s32 
 static u32 popc(u32 x) { u32 c = 0; while (x) { c += x & 1; x >>= 1; } return c; }
 s32 vwm_call_0202DE7C(u8 *info, u16 port, u16 bitmap, u16 datalen, s32 dbl) {      // WM_StartDataSharing
     (void)port; (void)dbl;
-    ds_active = 1; clk_ds_t0 = clk_now; ds_len = datalen > 40 ? 40 : datalen; ds_bm = bitmap; ds_have = 0; ds_seq = 0; ds_waitcnt = 0; ds_hold = 0;
+    ds_active = 1; ds_len = datalen > 40 ? 40 : datalen; ds_bm = bitmap; ds_have = 0; ds_seq = 0; ds_waitcnt = 0; ds_hold = 0;
     mset(ds_hok, 0, sizeof ds_hok);
     for (int i = 0; i < 4; i++) { ds_peer_seq[i] = 0; ds_peer_rtt[i] = 0; ds_off[i] = 0; ds_skip[i] = 0; }
     for (u32 a = 0; a < 4; a++) {
@@ -769,7 +769,9 @@ void vwm_call_0202ED54(u8 *mgr) {
         g_v.clk_ahead = (u32)ahead;
         // Im laufenden Rennen (Datenaustausch aktiv, nach der Startphase) die Uhr nie anhalten: dort hält ohnehin
         // der Lockstep alle zusammen, und ein angehaltener Zähler stört das Spiel (versetzte Positionen).
-        int may_hold = !ds_active || clk_now - clk_ds_t0 < CLK_DS_WINDOW;
+        // Maßstab sind die tatsächlich gelaufenen Renn-Schritte (ds_seq), nicht "Datenaustausch an": der Host
+        // startet ihn schon in der Lobby - mit der Zeit-Variante hielt der Host seine Uhr nie an (Start versetzt).
+        int may_hold = !ds_active || ds_seq < CLK_DS_STEPS;
         if (ahead > CLK_DEAD && !clk_gaveup && may_hold) {
             if (++clk_run <= CLK_MAXHOLD) { (*ctr)--; g_v.clk_hold++; }
             else { clk_gaveup = 1; g_v.clk_giveup++; }
