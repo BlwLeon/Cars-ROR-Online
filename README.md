@@ -13,7 +13,7 @@
   <a href="README.de.md">🇩🇪 Deutsche Version</a>
 </p>
 
-> **Status: beta 3** ([changelog](../../releases)). Everything described here works and has been tested with 4 players on different networks,
+> **Status: beta 4** ([changelog](../../releases)). Everything described here works and has been tested with 4 players on different networks,
 > but expect rough edges. Bug reports are very welcome (see [Contributing](#contributing--help-wanted)).
 
 ---
@@ -149,6 +149,8 @@ Technical notes (German) about the game internals and the protocol are in [`docs
 * Other cars are shown with a small delay that grows with the ping (typically 3–6 frames) – the usual trade-off
   of online play on hardware that was built for local wireless.
 * Real DS hardware has not been tested.
+* With the OpenGL renderers, melonDS sometimes shows a black screen in this game (also offline, after 10–50 minutes).
+  If that happens, switch to the Software renderer in the launcher settings.
 * Races only appear in your profile while the server that hosted them is still running.
 
 ## Contributing / help wanted

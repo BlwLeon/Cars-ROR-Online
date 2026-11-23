@@ -13,7 +13,7 @@
   <a href="README.md">🇬🇧 English version</a>
 </p>
 
-> **Status: Beta 3** ([Änderungen](../../releases)). Alles hier Beschriebene funktioniert und wurde mit 4 Spielern aus verschiedenen Netzwerken
+> **Status: Beta 4** ([Änderungen](../../releases)). Alles hier Beschriebene funktioniert und wurde mit 4 Spielern aus verschiedenen Netzwerken
 > getestet – mit kleinen Ecken und Kanten ist aber zu rechnen. Fehlermeldungen sind sehr willkommen
 > (siehe [Mithelfen](#mithelfen)).
 
@@ -155,6 +155,8 @@ alles automatisch. Technische Notizen zu den Interna des Spiels und zum Protokol
 * Andere Autos erscheinen mit einer kleinen Verzögerung, die mit dem Ping wächst (meist 3–6 Frames) – der übliche
   Kompromiss beim Online-Spiel auf Hardware, die für lokales Funken gebaut wurde.
 * Echte DS-Hardware ist nicht getestet.
+* Mit den OpenGL-Renderern zeigt melonDS in diesem Spiel manchmal ein schwarzes Bild (auch offline, nach 10–50
+  Minuten). Dann in den Launcher-Einstellungen auf den Software-Renderer wechseln.
 * Rennen erscheinen nur im Profil, solange der Server, auf dem sie gefahren wurden, noch läuft.
 
 ## Mithelfen
