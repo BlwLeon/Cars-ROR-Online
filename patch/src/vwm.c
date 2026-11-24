@@ -195,7 +195,7 @@ static u8 ds_active; static u16 ds_len, ds_bm, ds_seq, ds_D;
 static u8 ds_hist[4][DSH][40]; static u16 ds_hseq[4][DSH]; static u8 ds_hok[4][DSH];
 static u8 ds_last[4][40]; static u8 ds_have;      // neuester Block je Spieler (für übersprungene Spieler)
 static u16 ds_peer_seq[4]; static u8 ds_peer_rtt[4]; static s16 ds_off[4]; static u8 ds_skip[4]; static u32 ds_waitcnt;
-static u32 ds_hold, ds_calm; static u16 ds_miss, ds_win;   // Host nach Start-Nachricht kurz anhalten (Laufzeit zum Client ausgleichen)
+static u32 ds_hold, ds_calm, ds_last_step, ds_run; static u16 ds_miss, ds_win;   // Host nach Start-Nachricht kurz anhalten (Laufzeit zum Client ausgleichen)
 static void ds_store(u32 aid, u16 s, const u8 *blk) {
     u32 i = s & (DSH - 1); mcpy(ds_hist[aid][i], blk, ds_len); ds_hseq[aid][i] = s; ds_hok[aid][i] = 1;
 }
@@ -672,6 +672,7 @@ s32 vwm_call_0202DE7C(u8 *info, u16 port, u16 bitmap, u16 datalen, s32 dbl) {   
 s32 vwm_call_0202E230(u8 *info, const u8 *send, u8 *set) {                         // WM_StepDataSharing
     (void)info;
     if (!ds_active) return 3;
+    { u32 nf = net_frame(); if (nf - ds_last_step > 60) ds_run = 0; ds_last_step = nf; }   // neues Rennen / nach Pause
     u32 me = g_v.my_aid & 3;
     // eigenen Block für diesen Schritt merken und mit den letzten Blöcken senden
     ds_store(me, ds_seq, send);
@@ -752,7 +753,7 @@ s32 vwm_call_0202E230(u8 *info, const u8 *send, u8 *set) {                      
         ds_calm = 0;
         if (ds_D > mx + 2 && ds_D > 3) { ds_D--; g_v.ds_shrink++; }
     }
-    ds_waitcnt = 0; ds_seq++; g_v.ds_ok++;
+    ds_waitcnt = 0; ds_seq++; ds_run++; g_v.ds_ok++;
     return 0;
 }
 s32 vwm_call_0202DF74(u8 *info) { (void)info; ds_active = 0; return 0; }             // WM_EndDataSharing
@@ -792,7 +793,10 @@ void vwm_call_0202ED54(u8 *mgr) {
         // der Lockstep alle zusammen, und ein angehaltener Zähler stört das Spiel (versetzte Positionen).
         // Maßstab sind die tatsächlich gelaufenen Renn-Schritte (ds_seq), nicht "Datenaustausch an": der Host
         // startet ihn schon in der Lobby - mit der Zeit-Variante hielt der Host seine Uhr nie an (Start versetzt).
-        int may_hold = !ds_active || ds_seq < CLK_DS_STEPS;
+        // Zwischen zwei Rennen bleibt der Datenaustausch an (ds_seq läuft weiter) - deshalb zählen die Schritte seit
+        // dem Wiederanlaufen (ds_run) und "seit 2 s kein Schritt" gilt als Lobby. Sonst gab es ab dem 2. Rennen
+        // keine Start-Synchronisation mehr (Beta 4: Host startete früher, 5-10 s bis sich alles fing).
+        int may_hold = !ds_active || net_frame() - ds_last_step > 60 || ds_run < CLK_DS_STEPS;
         if (ahead > CLK_DEAD && !clk_gaveup && may_hold) {
             if (++clk_run <= CLK_MAXHOLD) { (*ctr)--; g_v.clk_hold++; }
             else { clk_gaveup = 1; g_v.clk_giveup++; }

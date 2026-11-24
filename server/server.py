@@ -24,7 +24,7 @@ ARGS = ap.parse_args()
 PORT = ARGS.port
 SIM = ARGS.lag > 0 or ARGS.jitter > 0 or ARGS.loss > 0 or ARGS.spike > 0
 PROTO_VER = 2
-MOD_VER = "R13"                        # Stand der Mod (ROM-Patch + Server)
+MOD_VER = "R14"                        # Stand der Mod (ROM-Patch + Server)
 SERVER_NAME = (ARGS.name or socket.gethostname())[:32]
 SERVER_SID = "%08x" % random.getrandbits(32)        # erkennt denselben Server unter mehreren Adressen
 INFO_REQ, INFO_RES = b"CRRO-INFO?", b"CRRO-INFO!"   # "Fußabdruck" für Server-Suche / Launcher
@@ -155,20 +155,34 @@ def info_reply(addr):
 # muss erst aus einem Mitschnitt bestimmt werden) -> "place": None.
 names = {}         # MAC-bytes -> Fahrername
 races = []         # [{"time", "server", "track", "players": [{"name","mac","place"}]}]
+DNF_CS = 599999    # 99:59.99 - so zählt das Spiel eigentlich Ausgezählte
 def learn_result(r, payload):
     """Port 13, Typ 0x0E = Zielmeldung: [0E][aid][u32 Gesamtzeit 1/100 s][u32 Runden ...].
-    Der Host leitet die Meldungen der Clients an alle weiter -> pro aid nur einmal zählen."""
+    Der Host leitet die Meldungen der Clients an alle weiter -> pro aid nur einmal zählen.
+    Gibt die (ggf. korrigierte) Nachricht zum Weiterleiten zurück: Ausgezählte bekommen 99:59.99 statt der
+    Zufallszeit, sonst setzt das Spiel sie auf 1-Runden-Strecken im Ergebnis-Bildschirm auf Platz 1."""
     p = bytes(payload)
-    if len(p) < 6 or p[0] != 0x0E: return
+    if len(p) < 6 or p[0] != 0x0E: return payload
     rc = r.race or (r.last_race if r.last_race and time.time() - r.last_race["last"] < 15 else None)
     m = r.members.get(p[1] & 3)
-    if not rc or not m: return
+    if not rc or not m: return payload
     if m.mac not in rc["res"]:
+        t, now, arr = struct.unpack_from('<I', p, 2)[0], time.time(), rc.get("arr", {})
+        if arr:
+            first = min(arr, key=arr.get); win_t = rc["res"][first]
+            dnf = t < win_t or t > win_t + (now - arr[first] + 1.0) * 100
+        else:
+            dnf = False
+        rc.setdefault("dnf_rw", {})[m.mac] = dnf
+        if dnf: log(f"Raum {r.id}: {names.get(m.mac) or m.name()} ausgezählt (Spiel meldete {t / 100:.2f} s) -> 99:59.99")
         v = [struct.unpack_from('<I', p, o)[0] for o in range(2, len(p) - 3, 4)]   # Gesamt, beste Runde, Runden...
         rc["res"][m.mac] = v[0]
         rc.setdefault("arr", {})[m.mac] = time.time()
         rc["laps"][m.mac] = {"best_cs": v[1] if len(v) > 1 else None, "laps_cs": [x for x in v[2:] if x]}
         if rc is r.last_race: rc["entry_fix"](rc)
+    if rc.get("dnf_rw", {}).get(m.mac):
+        p = p[:2] + struct.pack('<I', DNF_CS) + p[6:]
+    return p
 def _places(rc):
     """Ziel/Ausgezählt bestimmen. Das Spiel beendet das Rennen ~10 s nach dem ERSTEN Fahrer im Ziel und schickt
     dann für alle anderen eine Ersatzzeit - die kann zufällig sein (bei 1-Runden-Strecken sogar KLEINER als die
@@ -335,7 +349,7 @@ def handle(c, t, d, rseq=0):
         portlog(c, port, dest, d[6:])
         if (port & 15) == 12: learn_name(d[6:])
         elif (port & 15) == 13:
-            learn_result(r, d[6:])
+            d = bytes(d[:6]) + learn_result(r, d[6:])
             if c.aid == 0: learn_selection(r, d[6:])
         fwd = bytes([port, c.aid]) + bytes(d[2:4]) + bytes([min(255, int(c.rtt * 60 + 0.5)), 0]) + bytes(d[6:])   # Byte 4 = Ping des Absenders (Frames)
         for aid, m in r.members.items():
