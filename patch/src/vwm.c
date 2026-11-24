@@ -64,7 +64,7 @@ static int unrel_add_seq(u8 type, const u8 *data, u32 len, u16 seq);
 #define CLK_PORT 15
 #define CLK_DEAD 3        // Toleranz in Zähler-Takten
 #define CLK_EXTRA 8       // so viele Takte wird der Stand eines Mitspielers ohne neue Nachricht hochgerechnet
-#define CLK_MAXHOLD 120   // höchstens 2 s am Stück anhalten (Mitspieler hängt endgültig -> aufgeben)
+#define CLK_MAXHOLD 600   // höchstens ~10 s am Stück anhalten (lange Ladezeit/Shader eines Mitspielers abwarten, dann aufgeben)
 #define CLK_DS_STEPS 300  // im Rennen nur in den ersten 300 Schritten (~10 s, Countdown/Start) anhalten, danach nie
 static u32 clk_c[4], clk_t[4]; static u8 clk_ok[4], clk_synced; static u32 clk_run, clk_tick; static u8 clk_gaveup;
 // Zeitbasis der Netz-Uhr: Takte des Zählers (clk_now). Ping (last_rtt) wird in Spiel-Frames gemessen; im Rennen

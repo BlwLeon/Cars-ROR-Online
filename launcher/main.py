@@ -43,7 +43,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from core import paths, settings, rom, melon, servers, save, history, pad, i18n  # noqa: E402
 from core.i18n import T  # noqa: E402
 
-VERSION = "1.0.0-beta4"
+VERSION = "1.0.0-beta5"
 
 
 class Api:
