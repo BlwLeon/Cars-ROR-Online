@@ -168,7 +168,7 @@ def learn_result(r, payload):
     if not rc or not m: return payload
     if m.mac not in rc["res"]:
         t, now, arr = struct.unpack_from('<I', p, 2)[0], time.time(), rc.get("arr", {})
-        if arr:
+        if arr and rc.get("nlaps") == 1:   # nur 1-Runden-Strecken: dort ist die Ersatzzeit des Spiels Unsinn
             first = min(arr, key=arr.get); win_t = rc["res"][first]
             dnf = t < win_t or t > win_t + (now - arr[first] + 1.0) * 100
         else:
@@ -190,7 +190,14 @@ def _places(rc):
     ins Ziel kam: Siegerzeit <= Zeit <= Siegerzeit + Fenster. Alle anderen: ausgezählt (DNF), hinter den Fahrern im Ziel."""
     res, arr = rc["res"], rc.get("arr", {})
     out = {}
-    if res:
+    if res and rc.get("nlaps") != 1:
+        # Mehrrunden-Strecken: das Spiel rechnet für Nicht-Angekommene eine faire Zeit hoch -> übernehmen.
+        # Nur offensichtlich kaputte Werte (über 1 Stunde) gelten als ausgezählt.
+        ok = {m: t for m, t in res.items() if t < 360000}
+        order = sorted(ok, key=ok.get) + sorted((m for m in res if m not in ok), key=lambda m: arr.get(m, 0))
+        for i, m in enumerate(order):
+            out[m] = {"place": i + 1, "time_cs": res[m] if m in ok else None, "dnf": m not in ok}
+    elif res:
         first = min(arr, key=arr.get) if arr else min(res, key=res.get)
         win_t = res[first]
         window = (max(arr.values()) - arr[first]) if arr else 0
