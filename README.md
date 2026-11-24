@@ -13,7 +13,7 @@
   <a href="README.de.md">🇩🇪 Deutsche Version</a>
 </p>
 
-> **Status: beta 4** ([changelog](../../releases)). Everything described here works and has been tested with 4 players on different networks,
+> **Status: beta 5** ([changelog](../../releases)). Everything described here works and has been tested with 4 players on different networks,
 > but expect rough edges. Bug reports are very welcome (see [Contributing](#contributing--help-wanted)).
 
 ---

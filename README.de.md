@@ -13,7 +13,7 @@
   <a href="README.md">🇬🇧 English version</a>
 </p>
 
-> **Status: Beta 4** ([Änderungen](../../releases)). Alles hier Beschriebene funktioniert und wurde mit 4 Spielern aus verschiedenen Netzwerken
+> **Status: Beta 5** ([Änderungen](../../releases)). Alles hier Beschriebene funktioniert und wurde mit 4 Spielern aus verschiedenen Netzwerken
 > getestet – mit kleinen Ecken und Kanten ist aber zu rechnen. Fehlermeldungen sind sehr willkommen
 > (siehe [Mithelfen](#mithelfen)).
 
